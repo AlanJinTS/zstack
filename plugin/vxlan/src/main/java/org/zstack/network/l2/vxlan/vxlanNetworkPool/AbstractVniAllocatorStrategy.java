@@ -2,11 +2,16 @@ package org.zstack.network.l2.vxlan.vxlanNetworkPool;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.zstack.core.db.DatabaseFacade;
+import org.zstack.core.db.Q;
 import org.zstack.core.db.SimpleQuery;
 import org.zstack.core.errorcode.ErrorFacade;
 import org.zstack.header.errorcode.OperationFailureException;
 import org.zstack.header.network.l2.L2Errors;
+import org.zstack.header.network.l2.L2Network;
+import org.zstack.header.network.l2.L2NetworkVO;
 import org.zstack.network.l2.L2NetworkManager;
+import org.zstack.network.l2.vxlan.vxlanNetwork.VxlanNetworkVO;
+import org.zstack.network.l2.vxlan.vxlanNetwork.VxlanNetworkVO_;
 import org.zstack.utils.CollectionUtils;
 import org.zstack.utils.function.Function;
 
@@ -24,9 +29,7 @@ public abstract class AbstractVniAllocatorStrategy implements VniAllocatorStrate
     protected ErrorFacade errf;
 
     protected Integer allocateRequiredVni(VniAllocateMessage msg) {
-        SimpleQuery<VniRangeVO> q = dbf.createQuery(VniRangeVO.class);
-        q.add(VniRangeVO_.uuid, SimpleQuery.Op.EQ, msg.getL2NetworkUuid());
-        List<VniRangeVO> vnirs = q.list();
+        List<VniRangeVO> vnirs = Q.New(VniRangeVO.class).eq(VniRangeVO_.l2NetworkUuid, msg.getL2NetworkUuid()).list();
 
         final int rvni = msg.getRequiredVni();
 
@@ -39,9 +42,15 @@ public abstract class AbstractVniAllocatorStrategy implements VniAllocatorStrate
             }
         });
 
+        String duplicate = Q.New(VxlanNetworkVO.class).select(VxlanNetworkVO_.uuid).eq(VxlanNetworkVO_.vni, msg.getRequiredVni()).eq(VxlanNetworkVO_.poolUuid, msg.getL2NetworkUuid()).findValue();
+
         if (vnir == null) {
             throw new OperationFailureException(errf.instantiateErrorCode(L2Errors.ALLOCATE_VNI_ERROR,
-                    String.format("cannot vni range that has vni[%s] in l2Network[uuid:%s]", msg.getRequiredVni(), msg.getL2NetworkUuid())
+                    String.format("cannot allocate vni[%s] in l2Network[uuid:%s], out of vni range", msg.getRequiredVni(), msg.getL2NetworkUuid())
+            ));
+        } else if (duplicate != null) {
+            throw new OperationFailureException(errf.instantiateErrorCode(L2Errors.ALLOCATE_VNI_ERROR,
+                    String.format("cannot allocate vni[%s] in l2Network[uuid:%s], duplicate with l2Network[uuid:%s]", msg.getRequiredVni(), msg.getL2NetworkUuid(), duplicate)
             ));
         }
 

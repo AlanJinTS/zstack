@@ -4,7 +4,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 --  Table structure for `IdentityZoneVO`
 -- ----------------------------
 CREATE TABLE `IdentityZoneVO` (
-	  `uuid` varchar(32) NOT NULL,
+	  `uuid` varchar(32) UNIQUE NOT NULL,
 	  `zoneId` varchar(32) NOT NULL,
 	  `dataCenterUuid` varchar(32) NOT NULL,
 	  `type` varchar(32) NOT NULL,
@@ -14,10 +14,13 @@ CREATE TABLE `IdentityZoneVO` (
 	  `description` varchar(1024) DEFAULT NULL,
 	  `createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
 	  `lastOpDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE CURRENT_TIMESTAMP,
-	  PRIMARY KEY (`uuid`)
+	  PRIMARY KEY (`uuid`),
+	  CONSTRAINT fkIdentityZoneVODataCenterVO FOREIGN KEY (dataCenterUuid) REFERENCES DataCenterVO (uuid) ON DELETE RESTRICT,
+	  CONSTRAINT fkIdentityZoneVOEcsVSwitchVO FOREIGN KEY (defaultVSwitchUuid) REFERENCES EcsVSwitchVO (uuid) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 SET FOREIGN_KEY_CHECKS = 1;
+
 
 SET FOREIGN_KEY_CHECKS = 0;
 
@@ -25,7 +28,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 --  Table structure for `EcsVSwitchVO`
 -- ----------------------------
 CREATE TABLE `EcsVSwitchVO` (
-	  `uuid` varchar(32) NOT NULL,
+	  `uuid` varchar(32) UNIQUE NOT NULL,
 	  `vSwitchId` varchar(32) NOT NULL,
 	  `status` varchar(32) NOT NULL,
 	  `cidrBlock` varchar(32) NOT NULL,
@@ -36,7 +39,9 @@ CREATE TABLE `EcsVSwitchVO` (
 	  `identityZoneUuid` varchar(32) NOT NULL,
 	  `createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
 	  `lastOpDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE CURRENT_TIMESTAMP,
-	  PRIMARY KEY (`uuid`)
+	  PRIMARY KEY (`uuid`),
+	  CONSTRAINT fkEcsVSwitchVOEcsVpcVO FOREIGN KEY (ecsVpcUuid) REFERENCES EcsVpcVO (uuid) ON DELETE RESTRICT,
+	  CONSTRAINT fkEcsVSwitchVOIdentityZoneVO FOREIGN KEY (identityZoneUuid) REFERENCES IdentityZoneVO (uuid) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 SET FOREIGN_KEY_CHECKS = 1;
@@ -47,7 +52,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 --  Table structure for `EcsVpcVO`
 -- ----------------------------
 CREATE TABLE `EcsVpcVO` (
-	  `uuid` varchar(32) NOT NULL,
+	  `uuid` varchar(32) UNIQUE NOT NULL,
 	  `ecsVpcId` varchar(32) NOT NULL,
 	  `dataCenterUuid` varchar(32) NOT NULL,
 	  `status` varchar(32) NOT NULL,
@@ -58,10 +63,12 @@ CREATE TABLE `EcsVpcVO` (
 	  `description` varchar(1024) DEFAULT NULL,
 	  `createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
 	  `lastOpDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE CURRENT_TIMESTAMP,
-	  PRIMARY KEY (`uuid`)
+	  PRIMARY KEY (`uuid`),
+	  CONSTRAINT fkEcsVpcVODataCenterVO FOREIGN KEY (dataCenterUuid) REFERENCES DataCenterVO (uuid) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 SET FOREIGN_KEY_CHECKS = 1;
+
 
 SET FOREIGN_KEY_CHECKS = 0;
 
@@ -69,7 +76,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 --  Table structure for `EcsSecurityGroupRuleVO`
 -- ----------------------------
 CREATE TABLE `EcsSecurityGroupRuleVO` (
-	  `uuid` varchar(32) NOT NULL,
+	  `uuid` varchar(32) UNIQUE NOT NULL,
 	  `ecsSecurityGroupUuid` varchar(32) NOT NULL,
 	  `portRange` varchar(32) NOT NULL,
 	  `cidrIp` varchar(32) NOT NULL,
@@ -83,7 +90,7 @@ CREATE TABLE `EcsSecurityGroupRuleVO` (
 	  `createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
 	  `lastOpDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE CURRENT_TIMESTAMP,
 	  PRIMARY KEY (`uuid`),
-	  CONSTRAINT `fkEcsSecurityGroupRuleVOEcsSecurityGroupVO` FOREIGN KEY (`ecsSecurityGroupUuid`) REFERENCES `zstack`.`EcsSecurityGroupVO` (`uuid`) ON DELETE CASCADE
+	  CONSTRAINT fkEcsSecurityGroupRuleVOEcsSecurityGroupVO FOREIGN KEY (ecsSecurityGroupUuid) REFERENCES EcsSecurityGroupVO (uuid) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 SET FOREIGN_KEY_CHECKS = 1;
@@ -94,7 +101,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 --  Table structure for `EcsSecurityGroupVO`
 -- ----------------------------
 CREATE TABLE `EcsSecurityGroupVO` (
-	  `uuid` varchar(32) NOT NULL,
+	  `uuid` varchar(32) UNIQUE NOT NULL,
 	  `ecsVpcUuid` varchar(32) NOT NULL,
 	  `securityGroupId` varchar(32) NOT NULL,
 	  `securityGroupName` varchar(128) NOT NULL,
@@ -102,12 +109,12 @@ CREATE TABLE `EcsSecurityGroupVO` (
 	  `createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
 	  `lastOpDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE CURRENT_TIMESTAMP,
 	  PRIMARY KEY (`uuid`),
-	  UNIQUE KEY `ukEcsVpcUuidSecurityGroupId` (`ecsVpcUuid`,`securityGroupId`) USING BTREE
+	  UNIQUE KEY `ukEcsVpcUuidSecurityGroupId` (`ecsVpcUuid`,`securityGroupId`) USING BTREE,
+	  CONSTRAINT fkEcsSecurityGroupVOEcsVpcVO FOREIGN KEY (ecsVpcUuid) REFERENCES EcsVpcVO (uuid) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 SET FOREIGN_KEY_CHECKS = 1;
 
-SET FOREIGN_KEY_CHECKS = 0;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
@@ -115,15 +122,15 @@ SET FOREIGN_KEY_CHECKS = 0;
 --  Table structure for `EcsInstanceConsoleProxyVO`
 -- ----------------------------
 CREATE TABLE `EcsInstanceConsoleProxyVO` (
-	  `uuid` varchar(32) NOT NULL,
+	  `uuid` varchar(32) UNIQUE NOT NULL,
 	  `ecsInstanceUuid` varchar(32) NOT NULL,
 	  `vncUrl` varchar(256) DEFAULT NULL,
 	  `vncPassword` varchar(32) DEFAULT NULL,
 	  `createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
 	  `lastOpDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE CURRENT_TIMESTAMP,
 	  PRIMARY KEY (`uuid`),
-	  CONSTRAINT `fkEcsInstanceConsoleProxyVOEcsInstanceVO` FOREIGN KEY (`ecsInstanceUuid`) REFERENCES `zstack`.`EcsInstanceVO` (`uuid`) ON DELETE CASCADE,
-	  UNIQUE KEY `ecsInstanceUuid` (`ecsInstanceUuid`)
+	  UNIQUE KEY `ecsInstanceUuid` (`ecsInstanceUuid`),
+	  CONSTRAINT fkEcsInstanceConsoleProxyVOEcsInstanceVO FOREIGN KEY (ecsInstanceUuid) REFERENCES EcsInstanceVO(uuid) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 SET FOREIGN_KEY_CHECKS = 1;
@@ -134,7 +141,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 --  Table structure for `EcsInstanceVO`
 -- ----------------------------
 CREATE TABLE `EcsInstanceVO` (
-	  `uuid` varchar(32) NOT NULL,
+	  `uuid` varchar(32) UNIQUE NOT NULL,
 	  `localVmInstanceUuid` varchar(32) DEFAULT NULL,
 	  `ecsInstanceId` varchar(32) NOT NULL,
 	  `name` varchar(128) NOT NULL,
@@ -165,10 +172,10 @@ CREATE TABLE `EcsInstanceVO` (
       KEY `fkEcsInstanceVOIdentityZoneVO` (`identityZoneUuid`),
       KEY `fkEcsInstanceVOVmInstanceEO` (`localVmInstanceUuid`),
       CONSTRAINT `fkEcsInstanceVOEcsImageVO` FOREIGN KEY (`ecsImageUuid`) REFERENCES `EcsImageVO` (`uuid`) ON DELETE SET NULL,
-      CONSTRAINT `fkEcsInstanceVOEcsSecurityGroupVO` FOREIGN KEY (`ecsSecurityGroupUuid`) REFERENCES `EcsSecurityGroupVO` (`uuid`) ON DELETE SET NULL,
-      CONSTRAINT `fkEcsInstanceVOEcsVpcVO` FOREIGN KEY (`ecsVpcUuid`) REFERENCES `EcsVpcVO` (`uuid`) ON DELETE SET NULL,
-      CONSTRAINT `fkEcsInstanceVOEcsVSwitchVO` FOREIGN KEY (`ecsVSwitchUuid`) REFERENCES `EcsVSwitchVO` (`uuid`) ON DELETE SET NULL,
-      CONSTRAINT `fkEcsInstanceVOIdentityZoneVO` FOREIGN KEY (`identityZoneUuid`) REFERENCES `IdentityZoneVO` (`uuid`) ON DELETE CASCADE,
+      CONSTRAINT `fkEcsInstanceVOEcsSecurityGroupVO` FOREIGN KEY (`ecsSecurityGroupUuid`) REFERENCES `EcsSecurityGroupVO` (`uuid`) ON DELETE RESTRICT,
+      CONSTRAINT `fkEcsInstanceVOEcsVpcVO` FOREIGN KEY (`ecsVpcUuid`) REFERENCES `EcsVpcVO` (`uuid`) ON DELETE RESTRICT,
+      CONSTRAINT `fkEcsInstanceVOEcsVSwitchVO` FOREIGN KEY (`ecsVSwitchUuid`) REFERENCES `EcsVSwitchVO` (`uuid`) ON DELETE RESTRICT,
+      CONSTRAINT `fkEcsInstanceVOIdentityZoneVO` FOREIGN KEY (`identityZoneUuid`) REFERENCES `IdentityZoneVO` (`uuid`) ON DELETE RESTRICT,
       CONSTRAINT `fkEcsInstanceVOVmInstanceEO` FOREIGN KEY (`localVmInstanceUuid`) REFERENCES `VmInstanceEO` (`uuid`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
@@ -180,7 +187,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 --  Table structure for `EcsImageVO`
 -- ----------------------------
 CREATE TABLE `EcsImageVO` (
-	  `uuid` varchar(32) NOT NULL,
+	  `uuid` varchar(32) UNIQUE NOT NULL,
 	  `localImageUuid` varchar(32) DEFAULT NULL,
 	  `ecsImageId` varchar(32) NOT NULL,
 	  `dataCenterUuid` varchar(32) DEFAULT NULL,
@@ -188,12 +195,14 @@ CREATE TABLE `EcsImageVO` (
 	  `ecsImageSize` bigint(20) NOT NULL,
 	  `platform` varchar(32) NOT NULL,
 	  `type` varchar(32) NOT NULL,
-	  `ossMd5Sum` varchar(32) NOT NULL,
+	  `ossMd5Sum` varchar(128) NOT NULL,
 	  `format` varchar(32) NOT NULL,
 	  `description` varchar(1024) DEFAULT NULL,
 	  `createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
 	  `lastOpDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE CURRENT_TIMESTAMP,
-	  PRIMARY KEY (`uuid`)
+	  PRIMARY KEY (`uuid`),
+	  CONSTRAINT fkEcsImageVOImageEO FOREIGN KEY (localImageUuid) REFERENCES ImageEO (uuid) ON DELETE SET NULL,
+	  CONSTRAINT fkEcsImageVODataCenterVO FOREIGN KEY (dataCenterUuid) REFERENCES DataCenterVO (uuid) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 SET FOREIGN_KEY_CHECKS = 1;
@@ -204,7 +213,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 --  Table structure for `HybridEipAddressVO`
 -- ----------------------------
 CREATE TABLE `HybridEipAddressVO` (
-	  `uuid` varchar(32) NOT NULL,
+	  `uuid` varchar(32) UNIQUE NOT NULL,
 	  `eipId` varchar(32) NOT NULL,
 	  `bandWidth` varchar(32) NOT NULL,
 	  `eipAddress` varchar(32) NOT NULL,
@@ -226,15 +235,13 @@ SET FOREIGN_KEY_CHECKS = 0;
 --  Table structure for `EcsImageMd5SumMappingVO`
 -- ----------------------------
 CREATE TABLE `EcsImageMd5SumMappingVO` (
-  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `id` bigint(20) unsigned UNIQUE NOT NULL AUTO_INCREMENT,
   `qcow2Md5Sum` varchar(128) NOT NULL,
   `rawMd5Sum` varchar(128) NOT NULL,
   `ossBucketName` varchar(32) NOT NULL,
   `createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
   `lastOpDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `rawMd5Sum` (`rawMd5Sum`),
-  UNIQUE KEY `ossBucketName` (`ossBucketName`)
+  PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 SET FOREIGN_KEY_CHECKS = 1;
@@ -244,7 +251,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 --  Table structure for `OssBucketVO`
 -- ----------------------------
 CREATE TABLE `OssBucketVO` (
-	  `uuid` varchar(32) NOT NULL,
+	  `uuid` varchar(32) UNIQUE NOT NULL,
 	  `bucketName` varchar(32) NOT NULL,
 	  `regionId` varchar(32) NOT NULL,
 	  `createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
@@ -259,16 +266,14 @@ SET FOREIGN_KEY_CHECKS = 0;
 --  Table structure for `OssBucketEcsDataCenterRefVO`
 -- ----------------------------
 CREATE TABLE `OssBucketEcsDataCenterRefVO` (
-	  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `id` bigint(20) unsigned UNIQUE NOT NULL AUTO_INCREMENT,
 	  `ossBucketUuid` varchar(32) NOT NULL,
 	  `dataCenterUuid` varchar(32) NOT NULL,
 	  `createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
 	  `lastOpDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE CURRENT_TIMESTAMP,
 	  PRIMARY KEY (`id`),
 	  CONSTRAINT `fkOssBucketEcsDataCenterRefVOOssBucketVO` FOREIGN KEY (`ossBucketUuid`) REFERENCES `zstack`.`OssBucketVO` (`uuid`) ON DELETE CASCADE,
-      CONSTRAINT `fkOssBucketEcsDataCenterRefVODataCenterVO` FOREIGN KEY (`dataCenterUuid`) REFERENCES `zstack`.`DataCenterVO` (`uuid`) ON DELETE CASCADE,
-      UNIQUE KEY `dataCenterUuid` (`dataCenterUuid`),
-      UNIQUE KEY `ossBucketUuid` (`ossBucketUuid`)
+	  CONSTRAINT `fkOssBucketEcsDataCenterRefVODataCenterVO` FOREIGN KEY (`dataCenterUuid`) REFERENCES `zstack`.`DataCenterVO` (`uuid`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 SET FOREIGN_KEY_CHECKS = 1;
@@ -279,7 +284,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 --  Table structure for `DataCenterVO`
 -- ----------------------------
 CREATE TABLE `DataCenterVO` (
-	  `uuid` varchar(32) NOT NULL,
+	  `uuid` varchar(32) UNIQUE NOT NULL,
 	  `deleted` varchar(1) DEFAULT NULL,
 	  `regionName` varchar(1024) NOT NULL,
 	  `dcType` varchar(32) NOT NULL,
@@ -288,7 +293,8 @@ CREATE TABLE `DataCenterVO` (
 	  `description` varchar(1024) DEFAULT NULL,
 	  `createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
 	  `lastOpDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE CURRENT_TIMESTAMP,
-	  PRIMARY KEY (`uuid`)
+	  PRIMARY KEY (`uuid`),
+	  CONSTRAINT fkDataCenterVOEcsVpcVO FOREIGN KEY (defaultVpcUuid) REFERENCES EcsVpcVO (uuid) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 SET FOREIGN_KEY_CHECKS = 1;
@@ -298,7 +304,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 --  Table structure for `AvailableInstanceTypesVO`
 -- ----------------------------
 CREATE TABLE `AvailableInstanceTypesVO` (
-	  `uuid` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `uuid` bigint(20) unsigned UNIQUE NOT NULL AUTO_INCREMENT,
 	  `accountUuid` varchar(32) NOT NULL,
 	  `instanceType` varchar(4096) NOT NULL,
 	  `diskCategories` varchar(256) NOT NULL,
@@ -308,7 +314,9 @@ CREATE TABLE `AvailableInstanceTypesVO` (
 	  `createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
 	  `lastOpDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE CURRENT_TIMESTAMP,
 	  PRIMARY KEY (`uuid`),
-	  UNIQUE KEY `ukAccountUuidizUuid` (`accountUuid`,`izUuid`) USING BTREE
+	  UNIQUE KEY `ukAccountUuidizUuid` (`accountUuid`,`izUuid`) USING BTREE,
+	  CONSTRAINT fkAvailableInstanceTypesVOAccountVO FOREIGN KEY (accountUuid) REFERENCES AccountVO (uuid) ON DELETE CASCADE,
+	  CONSTRAINT fkAvailableInstanceTypesVOIdentityZoneVO FOREIGN KEY (izUuid) REFERENCES IdentityZoneVO (uuid) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 SET FOREIGN_KEY_CHECKS = 1;
@@ -318,7 +326,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 --  Table structure for `AvailableIdentityZonesVO`
 -- ----------------------------
 CREATE TABLE `AvailableIdentityZonesVO` (
-	  `uuid` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `uuid` bigint(20) unsigned UNIQUE NOT NULL AUTO_INCREMENT,
 	  `accountUuid` varchar(32) NOT NULL,
 	  `dataCenterUuid` varchar(32) NOT NULL,
 	  `type` varchar(32) NOT NULL,
@@ -327,8 +335,11 @@ CREATE TABLE `AvailableIdentityZonesVO` (
 	  `createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
 	  `lastOpDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE CURRENT_TIMESTAMP,
 	  PRIMARY KEY (`uuid`),
-	  UNIQUE KEY `ukAccountUuidizUuid` (`accountUuid`,`dataCenterUuid`,`zoneId`) USING BTREE
+	  UNIQUE KEY `ukAccountUuidizUuid` (`accountUuid`,`dataCenterUuid`,`zoneId`) USING BTREE,
+	  CONSTRAINT fkAvailableIdentityZonesVOAccountVO FOREIGN KEY (accountUuid) REFERENCES AccountVO (uuid) ON DELETE CASCADE,
+	  CONSTRAINT fkAvailableIdentityZonesVODataCenterVO FOREIGN KEY (dataCenterUuid) REFERENCES DataCenterVO (uuid) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 SET FOREIGN_KEY_CHECKS = 0;
@@ -337,68 +348,24 @@ SET FOREIGN_KEY_CHECKS = 0;
 --  Table structure for `HybridAccountVO`
 -- ----------------------------
 CREATE TABLE `HybridAccountVO` (
-  `uuid` varchar(32) NOT NULL,
+  `uuid` varchar(32) UNIQUE NOT NULL,
+  `name` varchar(32) UNIQUE NOT NULL,
   `accountUuid` varchar(32) NOT NULL,
   `userUuid` varchar(32) DEFAULT NULL,
   `type` varchar(32) NOT NULL,
   `akey` varchar(32) NOT NULL,
   `secret` varchar(64) NOT NULL,
+  `current` varchar(64) NOT NULL DEFAULT 'false',
   `description` varchar(1024) DEFAULT NULL,
   `createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
   `lastOpDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`uuid`),
-  UNIQUE KEY `idxHybridAccountVOKey` (`akey`) USING BTREE,
-  KEY `accountUuid` (`accountUuid`),
-  KEY `userUuid` (`userUuid`),
-  CONSTRAINT `fkHybridAccountVOAccountVO` FOREIGN KEY (`accountUuid`) REFERENCES `zstack`.`AccountVO` (`uuid`) ON DELETE CASCADE,
+  UNIQUE KEY `uniqAccountUuid` (`accountUuid`,`akey`),
+  CONSTRAINT `fkHybridAccountVOAccountVO` FOREIGN KEY (`accountUuid`) REFERENCES `zstack`.`AccountVO` (`uuid`) ON DELETE RESTRICT,
   CONSTRAINT `fkHybridAccountVOUserVO` FOREIGN KEY (`userUuid`) REFERENCES `zstack`.`UserVO` (`uuid`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 SET FOREIGN_KEY_CHECKS = 1;
-
-CREATE UNIQUE INDEX uniqAccountUuid on  HybridAccountVO(accountUuid);
-ALTER TABLE HybridAccountVO drop index accountUuid;
-
-CREATE UNIQUE INDEX uniqUserUuid on  HybridAccountVO(userUuid);
-ALTER TABLE HybridAccountVO drop index userUuid;
-
-# Foreign keys for table DataCenterVO
-
-ALTER TABLE DataCenterVO ADD CONSTRAINT fkDataCenterVOEcsVpcVO FOREIGN KEY (defaultVpcUuid) REFERENCES EcsVpcVO (uuid) ON DELETE SET NULL;
-
-# Foreign keys for table EcsImageVO
-
-ALTER TABLE EcsImageVO ADD CONSTRAINT fkEcsImageVOImageEO FOREIGN KEY (localImageUuid) REFERENCES ImageEO (uuid) ON DELETE SET NULL;
-ALTER TABLE EcsImageVO ADD CONSTRAINT fkEcsImageVODataCenterVO FOREIGN KEY (dataCenterUuid) REFERENCES DataCenterVO (uuid) ON DELETE SET NULL;
-
-# Foreign keys for table AvailableInstanceTypesVO
-
-ALTER TABLE AvailableInstanceTypesVO ADD CONSTRAINT fkAvailableInstanceTypesVOAccountVO FOREIGN KEY (accountUuid) REFERENCES AccountVO (uuid) ON DELETE CASCADE;
-ALTER TABLE AvailableInstanceTypesVO ADD CONSTRAINT fkAvailableInstanceTypesVOIdentityZoneVO FOREIGN KEY (izUuid) REFERENCES IdentityZoneVO (uuid) ON DELETE CASCADE;
-
-# Foreign keys for table AvailableIdentityZonesVO
-
-ALTER TABLE AvailableIdentityZonesVO ADD CONSTRAINT fkAvailableIdentityZonesVOAccountVO FOREIGN KEY (accountUuid) REFERENCES AccountVO (uuid) ON DELETE CASCADE;
-ALTER TABLE AvailableIdentityZonesVO ADD CONSTRAINT fkAvailableIdentityZonesVODataCenterVO FOREIGN KEY (dataCenterUuid) REFERENCES DataCenterVO (uuid) ON DELETE CASCADE;
-
-# Foreign keys for table IdentityZoneVO
-
-ALTER TABLE IdentityZoneVO ADD CONSTRAINT fkIdentityZoneVODataCenterVO FOREIGN KEY (dataCenterUuid) REFERENCES DataCenterVO (uuid) ON DELETE CASCADE;
-ALTER TABLE IdentityZoneVO ADD CONSTRAINT fkIdentityZoneVOEcsVSwitchVO FOREIGN KEY (defaultVSwitchUuid) REFERENCES EcsVSwitchVO (uuid) ON DELETE SET NULL;
-
-# Foreign keys for table EcsSecurityGroupVO
-
-ALTER TABLE EcsSecurityGroupVO ADD CONSTRAINT fkEcsSecurityGroupVOEcsVpcVO FOREIGN KEY (ecsVpcUuid) REFERENCES EcsVpcVO (uuid) ON DELETE CASCADE;
-
-# Foreign keys for table EcsVpcVO
-
-ALTER TABLE EcsVpcVO ADD CONSTRAINT fkEcsVpcVODataCenterVO FOREIGN KEY (dataCenterUuid) REFERENCES DataCenterVO (uuid) ON DELETE CASCADE;
-
-# Foreign keys for table EcsVSwitchVO
-
-ALTER TABLE EcsVSwitchVO ADD CONSTRAINT fkEcsVSwitchVOEcsVpcVO FOREIGN KEY (ecsVpcUuid) REFERENCES EcsVpcVO (uuid) ON DELETE CASCADE;
-ALTER TABLE EcsVSwitchVO ADD CONSTRAINT fkEcsVSwitchVOIdentityZoneVO FOREIGN KEY (identityZoneUuid) REFERENCES IdentityZoneVO (uuid) ON DELETE CASCADE;
-
 
 # sync EcsVSwitchVO availableIpAddressCount while EcsInstanceVO update
 DROP TRIGGER IF EXISTS trigger_decrease_vswitch_for_create_ecs;
@@ -410,105 +377,7 @@ update `EcsVSwitchVO` set `availableIpAddressCount`=`availableIpAddressCount`-1 
 END$$
 DELIMITER ;
 
-DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_EcsInstanceVO;
-DELIMITER $$
-CREATE TRIGGER trigger_clean_AccountResourceRefVO_for_EcsInstanceVO AFTER DELETE ON `EcsInstanceVO`
-FOR EACH ROW
-    BEGIN
-        delete from `AccountResourceRefVO` where `resourceUuid`=OLD.`uuid` and `resourceType`='EcsInstanceVO';
-        update `EcsVSwitchVO` set `availableIpAddressCount`=`availableIpAddressCount`+1 where `uuid`=OLD.`ecsVSwitchUuid`;
-    END$$
-DELIMITER ;
 
-DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_IdentityZoneVO;
-DELIMITER $$
-CREATE TRIGGER trigger_clean_AccountResourceRefVO_for_IdentityZoneVO AFTER DELETE ON `IdentityZoneVO`
-FOR EACH ROW
-    BEGIN
-        delete from `AccountResourceRefVO` where `resourceUuid`=OLD.`uuid` and `resourceType`='IdentityZoneVO';
-    END$$
-DELIMITER ;
-
-DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_DataCenterVO;
-DELIMITER $$
-CREATE TRIGGER trigger_clean_AccountResourceRefVO_for_DataCenterVO AFTER DELETE ON `DataCenterVO`
-FOR EACH ROW
-    BEGIN
-        delete from `AccountResourceRefVO` where `resourceUuid`=OLD.`uuid` and `resourceType`='DataCenterVO';
-    END$$
-DELIMITER ;
-
-DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_EcsVpcVO;
-DELIMITER $$
-CREATE TRIGGER trigger_clean_AccountResourceRefVO_for_EcsVpcVO AFTER DELETE ON `EcsVpcVO`
-FOR EACH ROW
-    BEGIN
-        delete from `AccountResourceRefVO` where `resourceUuid`=OLD.`uuid` and `resourceType`='EcsVpcVO';
-    END$$
-DELIMITER ;
-
-DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_EcsVSwitchVO;
-DELIMITER $$
-CREATE TRIGGER trigger_clean_AccountResourceRefVO_for_EcsVSwitchVO AFTER DELETE ON `EcsVSwitchVO`
-FOR EACH ROW
-    BEGIN
-        delete from `AccountResourceRefVO` where `resourceUuid`=OLD.`uuid` and `resourceType`='EcsVSwitchVO';
-    END$$
-DELIMITER ;
-
-DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_EcsImageVO;
-DELIMITER $$
-CREATE TRIGGER trigger_clean_AccountResourceRefVO_for_EcsImageVO AFTER DELETE ON `EcsImageVO`
-FOR EACH ROW
-    BEGIN
-        delete from `AccountResourceRefVO` where `resourceUuid`=OLD.`uuid` and `resourceType`='EcsImageVO';
-    END$$
-DELIMITER ;
-
-DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_EcsSecurityGroupVO;
-DELIMITER $$
-CREATE TRIGGER trigger_clean_AccountResourceRefVO_for_EcsSecurityGroupVO AFTER DELETE ON `EcsSecurityGroupVO`
-FOR EACH ROW
-    BEGIN
-        delete from `AccountResourceRefVO` where `resourceUuid`=OLD.`uuid` and `resourceType`='EcsSecurityGroupVO';
-    END$$
-DELIMITER ;
-
-DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_HybridEipAddressVO;
-DELIMITER $$
-CREATE TRIGGER trigger_clean_AccountResourceRefVO_for_HybridEipAddressVO AFTER DELETE ON `HybridEipAddressVO`
-FOR EACH ROW
-    BEGIN
-        delete from `AccountResourceRefVO` where `resourceUuid`=OLD.`uuid` and `resourceType`='HybridEipAddressVO';
-    END$$
-DELIMITER ;
-
-DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_OssBucketVO;
-DELIMITER $$
-CREATE TRIGGER trigger_clean_AccountResourceRefVO_for_OssBucketVO AFTER DELETE ON `OssBucketVO`
-FOR EACH ROW
-    BEGIN
-        delete from `AccountResourceRefVO` where `resourceUuid`=OLD.`uuid` and `resourceType`='OssBucketVO';
-    END$$
-DELIMITER ;
-
-DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_EcsInstanceConsoleProxyVO;
-DELIMITER $$
-CREATE TRIGGER trigger_clean_AccountResourceRefVO_for_EcsInstanceConsoleProxyVO AFTER DELETE ON `EcsInstanceConsoleProxyVO`
-FOR EACH ROW
-    BEGIN
-        delete from `AccountResourceRefVO` where `resourceUuid`=OLD.`uuid` and `resourceType`='EcsInstanceConsoleProxyVO';
-    END$$
-DELIMITER ;
-
-DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_HybridAccountVO;
-DELIMITER $$
-CREATE TRIGGER trigger_clean_AccountResourceRefVO_for_HybridAccountVO AFTER DELETE ON `HybridAccountVO`
-FOR EACH ROW
-    BEGIN
-        delete from `AccountResourceRefVO` where `resourceUuid`=OLD.`uuid` and `resourceType`='HybridAccountVO';
-    END$$
-DELIMITER ;
 
 DROP TRIGGER IF EXISTS trigger_attach_eip_for_ecsinstance;
 DELIMITER $$
@@ -534,7 +403,8 @@ DELIMITER ;
 # VxlanNetwork
 CREATE TABLE `zstack`.`VxlanNetworkPoolVO` (
   `uuid` varchar(32) NOT NULL UNIQUE,
-  PRIMARY KEY  (`uuid`)
+  PRIMARY KEY  (`uuid`),
+	CONSTRAINT fkVxlanNetworkPoolVOL2NetworkEO FOREIGN KEY (uuid) REFERENCES L2NetworkEO (uuid) ON UPDATE RESTRICT ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `zstack`.`VtepVO` (
@@ -545,14 +415,22 @@ CREATE TABLE `zstack`.`VtepVO` (
   `clusterUuid` varchar(32) NOT NULL,
   `type` varchar(32) NOT NULL,
   `poolUuid` varchar(32) NOT NULL,
-  PRIMARY KEY  (`uuid`)
+	`createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+	`lastOpDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY  (`uuid`),
+	CONSTRAINT fkVtepVOHostEO FOREIGN KEY (hostUuid) REFERENCES HostEO (uuid) ON DELETE CASCADE,
+	CONSTRAINT fkVtepVOClusterEO FOREIGN KEY (clusterUuid) REFERENCES ClusterEO (uuid) ON DELETE CASCADE,
+	UNIQUE KEY `ukVtepIpPoolUuid` (`vtepIp`,`poolUuid`) USING BTREE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `zstack`.`VxlanNetworkVO` (
   `uuid` varchar(32) NOT NULL UNIQUE,
   `vni` int NOT NULL,
   `poolUuid` varchar(32),
-  PRIMARY KEY  (`uuid`)
+  PRIMARY KEY  (`uuid`),
+	CONSTRAINT fkVxlanNetworkVOL2NetworkEO FOREIGN KEY (uuid) REFERENCES L2NetworkEO (uuid) ON UPDATE RESTRICT ON DELETE CASCADE,
+	CONSTRAINT fkVxlanNetworkVOVxlanNetworkPoolVO FOREIGN KEY (poolUuid) REFERENCES VxlanNetworkPoolVO (uuid) ON UPDATE RESTRICT ON DELETE CASCADE,
+	UNIQUE KEY `ukVniPoolUuid` (`vni`,`poolUuid`) USING BTREE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `zstack`.`VniRangeVO` (
@@ -562,17 +440,12 @@ CREATE TABLE `zstack`.`VniRangeVO` (
   `l2NetworkUuid` varchar(32) NOT NULL COMMENT 'l3 network uuid',
   `startVni` INT NOT NULL COMMENT 'start vni',
   `endVni` INT NOT NULL COMMENT 'end vni',
-  PRIMARY KEY  (`uuid`)
+	`createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+	`lastOpDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY  (`uuid`),
+	CONSTRAINT fkVniRangeVOL2NetworkEO  FOREIGN KEY (l2NetworkUuid) REFERENCES L2NetworkEO (uuid) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-ALTER TABLE VxlanNetworkVO ADD CONSTRAINT fkVxlanNetworkVOL2NetworkEO FOREIGN KEY (uuid) REFERENCES L2NetworkEO (uuid) ON UPDATE RESTRICT ON DELETE CASCADE;
-ALTER TABLE VxlanNetworkVO ADD CONSTRAINT fkVxlanNetworkVOVxlanNetworkPoolVO FOREIGN KEY (poolUuid) REFERENCES VxlanNetworkPoolVO (uuid) ON UPDATE RESTRICT ON DELETE CASCADE;
-ALTER TABLE VxlanNetworkPoolVO ADD CONSTRAINT fkVxlanNetworkPoolVOL2NetworkEO FOREIGN KEY (uuid) REFERENCES L2NetworkEO (uuid) ON UPDATE RESTRICT ON DELETE CASCADE;
-
-ALTER TABLE VtepVO ADD CONSTRAINT fkVtepVOHostEO FOREIGN KEY (hostUuid) REFERENCES HostEO (uuid) ON DELETE RESTRICT;
-ALTER TABLE VtepVO ADD CONSTRAINT fkVtepVOClusterEO FOREIGN KEY (clusterUuid) REFERENCES ClusterEO (uuid) ON DELETE RESTRICT;
-
-ALTER TABLE VniRangeVO ADD CONSTRAINT fkVniRangeVOL2NetworkEO  FOREIGN KEY (l2NetworkUuid) REFERENCES L2NetworkEO (uuid) ON DELETE CASCADE;
 
 CREATE TABLE  `zstack`.`TaskProgressVO` (
     `id` bigint unsigned NOT NULL UNIQUE AUTO_INCREMENT,
@@ -586,26 +459,17 @@ CREATE TABLE  `zstack`.`TaskProgressVO` (
     `arguments` text DEFAULT NULL,
     `opaque` text DEFAULT NULL,
     `time` bigint unsigned NOT NULL,
+    `timeToDelete` bigint unsigned DEFAULT NULL,
     PRIMARY KEY  (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 # Foreign keys for table TaskProgressVO
-ALTER TABLE TaskProgressVO ADD COLUMN createDate timestamp;
 ALTER TABLE TaskProgressVO ADD CONSTRAINT fkTaskProgressVOManagementNodeVO FOREIGN KEY (managementUuid) REFERENCES ManagementNodeVO (uuid) ON DELETE SET NULL;
 
-CREATE TABLE  `zstack`.`TaskStepVO` (
-    `id` bigint unsigned NOT NULL UNIQUE AUTO_INCREMENT,
-    `taskName` varchar(1024) NOT NULL,
-    `content` text DEFAULT NULL,
-    `lastOpDate` timestamp ON UPDATE CURRENT_TIMESTAMP,
-    `createDate` timestamp,
-    PRIMARY KEY  (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-
-DROP TABLE ProgressVO;
+DROP TABLE IF EXISTS ProgressVO;
 
 CREATE TABLE  `zstack`.`NotificationVO` (
-    `uuid` varchar(32) NOT NULL UNIQUE,
+    `uuid` varchar(32) NOT NULL,
     `name` varchar(1024) NOT NULL,
     `content` text NOT NULL,
     `arguments` text DEFAULT NULL,
@@ -618,8 +482,23 @@ CREATE TABLE  `zstack`.`NotificationVO` (
     `time` bigint unsigned DEFAULT NULL,
     `lastOpDate` timestamp ON UPDATE CURRENT_TIMESTAMP,
     `createDate` timestamp,
-    PRIMARY KEY  (`uuid`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+    `dateTime` datetime,
+    UNIQUE KEY `uuid` (`uuid`, `dateTime`),
+    PRIMARY KEY  (`uuid`, `dateTime`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 PARTITION BY RANGE( YEAR(dateTime) ) (
+    PARTITION p2017 VALUES LESS THAN (2018),
+    PARTITION p2018 VALUES LESS THAN (2019),
+    PARTITION p2019 VALUES LESS THAN (2020),
+    PARTITION p2020 VALUES LESS THAN (2021),
+    PARTITION p2021 VALUES LESS THAN (2022),
+    PARTITION p2022 VALUES LESS THAN (2023),
+    PARTITION p2023 VALUES LESS THAN (2024),
+    PARTITION p2024 VALUES LESS THAN (2025),
+    PARTITION p2025 VALUES LESS THAN (2026),
+    PARTITION p2026 VALUES LESS THAN (2027),
+    PARTITION p2027 VALUES LESS THAN (2028),
+    PARTITION p9999 VALUES LESS THAN MAXVALUE
+);
 
 CREATE TABLE  `zstack`.`NotificationSubscriptionVO` (
     `uuid` varchar(32) NOT NULL UNIQUE,
@@ -632,4 +511,274 @@ CREATE TABLE  `zstack`.`NotificationSubscriptionVO` (
     PRIMARY KEY  (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
+
 ALTER TABLE LocalStorageResourceRefVO DROP FOREIGN KEY `fkLocalStorageResourceRefVOHostEO`;
+
+ALTER TABLE VCenterVO ADD port int DEFAULT NULL;
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- ----------------------------
+--  Table structure for `VpcVirtualRouterVO`
+-- ----------------------------
+CREATE TABLE `VpcVirtualRouterVO` (
+	  `uuid` varchar(32) UNIQUE NOT NULL,
+	  `vrId` varchar(32) NOT NULL,
+	  `vpcUuid` varchar(32) NOT NULL,
+	  `vRouterName` varchar(32) NOT NULL,
+	  `description` varchar(1024) DEFAULT NULL,
+	  `createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+	  `lastOpDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE CURRENT_TIMESTAMP,
+	  PRIMARY KEY (`uuid`),
+	  CONSTRAINT `fkVpcVirtualRouterVOEcsVpcVO` FOREIGN KEY (`vpcUuid`) REFERENCES `zstack`.`EcsVpcVO` (`uuid`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- ----------------------------
+--  Table structure for `VirtualRouterInterfaceVO`
+-- ----------------------------
+CREATE TABLE `VirtualRouterInterfaceVO` (
+	  `uuid` varchar(32) UNIQUE NOT NULL,
+	  `dataCenterUuid` varchar(32) NOT NULL,
+	  `routerInterfaceId` varchar(64) NOT NULL,
+	  `virtualRouterUuid` varchar(32) NOT NULL,
+	  `accessPointUuid` varchar(32) DEFAULT NULL,
+	  `vRouterType` varchar(16) NOT NULL,
+	  `role` varchar(16) NOT NULL,
+	  `spec` varchar(32) NOT NULL,
+	  `name` varchar(64) NOT NULL,
+	  `status` varchar(32) NOT NULL,
+	  `oppositeInterfaceUuid` varchar(32) NOT NULL,
+	  `description` varchar(128) DEFAULT NULL,
+	  `createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+	  `lastOpDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE CURRENT_TIMESTAMP,
+	  PRIMARY KEY (`uuid`),
+	  CONSTRAINT `fkVirtualRouterInterfaceVOConnectionAccessPointVO` FOREIGN KEY (`accessPointUuid`) REFERENCES `zstack`.`ConnectionAccessPointVO` (`uuid`) ON DELETE RESTRICT,
+	  CONSTRAINT `fkVirtualRouterInterfaceVODataCenterVO` FOREIGN KEY (`dataCenterUuid`) REFERENCES `zstack`.`DataCenterVO` (`uuid`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- ----------------------------
+--  Table structure for `VpcVirtualRouteEntryVO`
+-- ----------------------------
+CREATE TABLE `VpcVirtualRouteEntryVO` (
+	  `uuid` varchar(32) UNIQUE NOT NULL,
+	  `destinationCidrBlock` varchar(64) NOT NULL,
+	  `nextHopVRiUuid` varchar(32) DEFAULT NULL,
+	  `type` varchar(32) NOT NULL,
+	  `status` varchar(32) NOT NULL,
+	  `nextHopType` varchar(32) NOT NULL,
+	  `vRouterType` varchar(16) NOT NULL,
+	  `virtualRouterUuid` varchar(32) NOT NULL,
+	  `createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+	  `lastOpDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE CURRENT_TIMESTAMP,
+	  PRIMARY KEY (`uuid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- ----------------------------
+--  Table structure for `ConnectionAccessPointVO`
+-- ----------------------------
+CREATE TABLE `ConnectionAccessPointVO` (
+	  `uuid` varchar(32) UNIQUE NOT NULL,
+	  `accessPointId` varchar(64) NOT NULL,
+	  `type` varchar(32) NOT NULL,
+	  `name` varchar(64) NOT NULL,
+	  `dataCenterUuid` varchar(32) NOT NULL,
+	  `status` varchar(32) NOT NULL,
+	  `hostOperator` varchar(32) NOT NULL,
+	  `description` varchar(128) DEFAULT NULL,
+	  `createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+	  `lastOpDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE CURRENT_TIMESTAMP,
+	  PRIMARY KEY (`uuid`),
+	  CONSTRAINT `fkConnectionAccessPointVODataCenterVO` FOREIGN KEY (`dataCenterUuid`) REFERENCES `zstack`.`DataCenterVO` (`uuid`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- ----------------------------
+--  Table structure for `VirtualBorderRouterVO`
+-- ----------------------------
+CREATE TABLE `VirtualBorderRouterVO` (
+	  `uuid` varchar(32) UNIQUE NOT NULL,
+	  `vbrId` varchar(32) NOT NULL,
+	  `vlanInterfaceId` varchar(64) NOT NULL,
+	  `status` varchar(16) NOT NULL,
+	  `name` varchar(64) NOT NULL,
+	  `dataCenterUuid` varchar(32) NOT NULL,
+	  `vlanId` varchar(64) NOT NULL,
+	  `circuitCode` varchar(32) NOT NULL,
+	  `localGatewayIp` varchar(32) NOT NULL,
+	  `peerGatewayIp` varchar(32) NOT NULL,
+	  `physicalConnectionStatus` varchar(32) NOT NULL,
+	  `peeringSubnetMask` varchar(32) NOT NULL,
+	  `physicalConnectionId` varchar(32) NOT NULL,
+	  `accessPointUuid` varchar(32) NOT NULL,
+	  `description` varchar(128) DEFAULT NULL,
+	  `createDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+	  `lastOpDate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE CURRENT_TIMESTAMP,
+	  PRIMARY KEY (`uuid`),
+	  CONSTRAINT `fkVirtualBorderRouterVODataCenterVO` FOREIGN KEY (`dataCenterUuid`) REFERENCES `zstack`.`DataCenterVO` (`uuid`) ON DELETE RESTRICT,
+	  CONSTRAINT `fkVirtualBorderRouterVOConnectionAccessPointVO` FOREIGN KEY (`accessPointUuid`) REFERENCES `zstack`.`ConnectionAccessPointVO` (`uuid`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+ALTER TABLE QuotaVO MODIFY COLUMN id INT;
+ALTER TABLE QuotaVO DROP PRIMARY KEY;
+ALTER TABLE QuotaVO DROP id;
+ALTER TABLE QuotaVO ADD uuid varchar(32);
+UPDATE QuotaVO SET uuid = REPLACE(UUID(),'-','') WHERE uuid IS NULL;
+ALTER TABLE QuotaVO MODIFY uuid varchar(32) UNIQUE NOT NULL PRIMARY KEY;
+
+ALTER TABLE `zstack`.`JsonLabelVO` modify column resourceUuid varchar(32) DEFAULT NULL;
+ALTER TABLE `zstack`.`VipVO` ADD UNIQUE INDEX(`ipRangeUuid`,`ip`);
+
+CREATE TABLE `ResourceVO` (
+  `uuid` varchar(32) NOT NULL UNIQUE,
+  `resourceName` varchar(255) DEFAULT NULL,
+  `resourceType` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`uuid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+INSERT IGNORE INTO ResourceVO (uuid,resourceType) SELECT t.resourceUuid , t.resourceType FROM AccountResourceRefVO t;
+INSERT IGNORE INTO ResourceVO (uuid,resourceType) SELECT t.resourceUuid , t.resourceType FROM SystemTagVO t;
+INSERT IGNORE INTO ResourceVO (uuid,resourceType) SELECT t.resourceUuid , t.resourceType FROM UserTagVO t;
+UPDATE JsonLabelVO SET resourceUuid=UUID();
+UPDATE JsonLabelVO SET resourceUuid=REPLACE(resourceUuid,'-','7');
+INSERT IGNORE INTO ResourceVO (uuid) SELECT t.resourceUuid FROM JsonLabelVO t;
+
+
+ALTER TABLE AccountResourceRefVO ADD CONSTRAINT fkAccountResourceRefVOResourceVO FOREIGN KEY (resourceUuid) REFERENCES ResourceVO (uuid) ON DELETE CASCADE;
+ALTER TABLE SystemTagVO ADD CONSTRAINT fkSystemTagVOResourceVO FOREIGN KEY (resourceUuid) REFERENCES ResourceVO (uuid) ON DELETE CASCADE;
+ALTER TABLE UserTagVO ADD CONSTRAINT fkUserTagVOResourceVO FOREIGN KEY (resourceUuid) REFERENCES ResourceVO (uuid) ON DELETE CASCADE;
+ALTER TABLE JsonLabelVO ADD CONSTRAINT fkJsonLabelVOResourceVO FOREIGN KEY (resourceUuid) REFERENCES ResourceVO (uuid) ON DELETE CASCADE;
+
+# fkVolumeEOVmInstanceEO was wrongly added
+ALTER TABLE VolumeEO DROP FOREIGN KEY fkVolumeEOVmInstanceEO;
+
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_VolumeEO;
+DROP TRIGGER IF EXISTS trigger_cleanup_for_VolumeEO_hard_delete;
+DROP TRIGGER IF EXISTS trigger_cleanup_for_VmInstanceEO_hard_delete;
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_DiskOfferingEO;
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_EipVO;
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_ImageEO;
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_InstanceOfferingEO;
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_IpRangeEO;
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_L3NetworkEO;
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_LoadBalancerListenerVO;
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_LoadBalancerVO;
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_PolicyVO;
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_PortForwardingRuleVO;
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_QuotaVO;
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_SchedulerVO;
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_SecurityGroupVO;
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_UserGroupVO;
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_UserVO;
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_VipVO;
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_VmInstanceEO;
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_VmNicVO;
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_VolumeEO;
+DROP TRIGGER IF EXISTS trigger_clean_AccountResourceRefVO_for_VolumeSnapshotEO;
+
+
+
+INSERT IGNORE INTO ResourceVO (uuid, resourceType) SELECT t.uuid, "DataCenterVO" FROM DataCenterVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceType) SELECT t.uuid, "EcsImageVO" FROM EcsImageVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceType) SELECT t.uuid, "EcsSecurityGroupRuleVO" FROM EcsSecurityGroupRuleVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceType) SELECT t.uuid, "EcsInstanceConsoleProxyVO" FROM EcsInstanceConsoleProxyVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceType) SELECT t.uuid, "EcsSecurityGroupVO" FROM EcsSecurityGroupVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.vRouterName, "VpcVirtualRouterVO" FROM VpcVirtualRouterVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.vSwitchName, "EcsVSwitchVO" FROM EcsVSwitchVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceType) SELECT t.uuid, "EcsVpcVO" FROM EcsVpcVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceType) SELECT t.uuid, "EcsInstanceVO" FROM EcsInstanceVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "HybridAccountVO" FROM HybridAccountVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceType) SELECT t.uuid, "HybridEipAddressVO" FROM HybridEipAddressVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.bucketName, "OssBucketVO" FROM OssBucketVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceType) SELECT t.uuid, "IdentityZoneVO" FROM IdentityZoneVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceType) SELECT t.uuid, "ConnectionAccessPointVO" FROM ConnectionAccessPointVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "VirtualBorderRouterVO" FROM VirtualBorderRouterVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "VirtualRouterInterfaceVO" FROM VirtualRouterInterfaceVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceType) SELECT t.uuid, "VpcVirtualRouteEntryVO" FROM VpcVirtualRouteEntryVO t;
+
+
+
+
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "EipVO" FROM EipVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "AccountVO" FROM AccountVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "BackupStorageEO" FROM BackupStorageEO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceType) SELECT t.uuid, "CephBackupStorageMonVO" FROM CephBackupStorageMonVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceType) SELECT t.uuid, "CephPrimaryStorageMonVO" FROM CephPrimaryStorageMonVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceType) SELECT t.uuid, "CephPrimaryStoragePoolVO" FROM CephPrimaryStoragePoolVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "ClusterEO" FROM ClusterEO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceType) SELECT t.uuid, "ConsoleProxyVO" FROM ConsoleProxyVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "DiskOfferingEO" FROM DiskOfferingEO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "EipVO" FROM EipVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "GarbageCollectorVO" FROM GarbageCollectorVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "HostEO" FROM HostEO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "ImageEO" FROM ImageEO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "InstanceOfferingEO" FROM InstanceOfferingEO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "IpRangeEO" FROM IpRangeEO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "L2NetworkEO" FROM L2NetworkEO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "L3NetworkEO" FROM L3NetworkEO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "LdapServerVO" FROM LdapServerVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "LoadBalancerListenerVO" FROM LoadBalancerListenerVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "LoadBalancerVO" FROM LoadBalancerVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "PolicyVO" FROM PolicyVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "PortForwardingRuleVO" FROM PortForwardingRuleVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "PrimaryStorageEO" FROM PrimaryStorageEO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "QuotaVO" FROM QuotaVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.jobName, "SchedulerVO" FROM SchedulerVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceType) SELECT t.uuid, "SecurityGroupRuleVO" FROM SecurityGroupRuleVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "SecurityGroupVO" FROM SecurityGroupVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "UserGroupVO" FROM UserGroupVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "UserVO" FROM UserVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "VCenterDatacenterVO" FROM VCenterDatacenterVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "VCenterVO" FROM VCenterVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "VipVO" FROM VipVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "VmInstanceEO" FROM VmInstanceEO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceType) SELECT t.uuid, "VmNicVO" FROM VmNicVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "VniRangeVO" FROM VniRangeVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "VolumeEO" FROM VolumeEO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "VolumeSnapshotEO" FROM VolumeSnapshotEO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceType) SELECT t.uuid, "VolumeSnapshotTreeEO" FROM VolumeSnapshotTreeEO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceType) SELECT t.uuid, "VtepVO" FROM VtepVO t;
+INSERT IGNORE INTO ResourceVO (uuid, resourceName, resourceType) SELECT t.uuid, t.name, "ZoneEO" FROM ZoneEO t;
+
+# Foreign keys for table VirtualRouterLoadBalancerRefVO
+
+ALTER TABLE `zstack`.`VirtualRouterLoadBalancerRefVO` ADD CONSTRAINT fkVirtualRouterLoadBalancerRefVOVirtualRouterVmVO FOREIGN KEY (virtualRouterVmUuid) REFERENCES VirtualRouterVmVO (uuid) ON DELETE CASCADE;
+ALTER TABLE `zstack`.`VirtualRouterLoadBalancerRefVO` ADD CONSTRAINT fkVirtualRouterLoadBalancerRefVOLoadBalancerVO FOREIGN KEY (loadBalancerUuid) REFERENCES LoadBalancerVO (uuid) ON DELETE CASCADE;
+ALTER TABLE `zstack`.`VirtualRouterLoadBalancerRefVO` ADD UNIQUE INDEX(`virtualRouterVmUuid`,`loadBalancerUuid`);
+
+
+UPDATE InstanceOfferingVO SET allocatorStrategy="LeastVmPreferredHostAllocatorStrategy" WHERE allocatorStrategy="Mevoco";
+
+UPDATE VmInstanceVO SET allocatorStrategy="LeastVmPreferredHostAllocatorStrategy" WHERE allocatorStrategy="Mevoco";
+
+CREATE TABLE  `zstack`.`WebhookVO` (
+    `uuid` varchar(32) NOT NULL UNIQUE,
+    `name` varchar(255) NOT NULL,
+    `description` varchar(2048) DEFAULT NULL,
+    `url` varchar(2048) DEFAULT NULL,
+    `type` varchar(255) NOT NULL,
+    `opaque` text DEFAULT NULL,
+    `lastOpDate` timestamp ON UPDATE CURRENT_TIMESTAMP,
+    `createDate` timestamp,
+    PRIMARY KEY  (`uuid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+# Foreign keys for table LoadBalancerListenerVO
+ALTER TABLE LoadBalancerListenerVO DROP FOREIGN KEY fkLoadBalancerListenerVOLoadBalancerVO;
+ALTER TABLE LoadBalancerListenerVO ADD CONSTRAINT fkLoadBalancerListenerVOLoadBalancerVO FOREIGN KEY (loadBalancerUuid) REFERENCES LoadBalancerVO (uuid) ON DELETE RESTRICT ;

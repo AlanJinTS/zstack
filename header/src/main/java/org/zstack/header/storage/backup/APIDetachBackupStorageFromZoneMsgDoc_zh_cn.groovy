@@ -1,28 +1,30 @@
 package org.zstack.header.storage.backup
 
+import org.zstack.header.storage.backup.APIDetachBackupStorageFromZoneEvent
+
 doc {
     title "从区域中卸载已经挂载的镜像服务器(DetachBackupStorageFromZone)"
 
     category "storage.backup"
 
-    desc "从区域中卸载已经挂载的镜像服务器"
+    desc """从区域中卸载已经挂载的镜像服务器"""
 
     rest {
         request {
 			url "DELETE /v1/zones/{zoneUuid}/backup-storage/{backupStorageUuid}"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIDetachBackupStorageFromZoneMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
 				column {
 					name "backupStorageUuid"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "镜像存储UUID"
 					location "url"
 					type "String"
@@ -32,7 +34,7 @@ doc {
 				}
 				column {
 					name "zoneUuid"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "区域UUID"
 					location "url"
 					type "String"
@@ -42,7 +44,7 @@ doc {
 				}
 				column {
 					name "systemTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "系统标签"
 					location "body"
 					type "List"
@@ -52,7 +54,7 @@ doc {
 				}
 				column {
 					name "userTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "用户标签"
 					location "body"
 					type "List"

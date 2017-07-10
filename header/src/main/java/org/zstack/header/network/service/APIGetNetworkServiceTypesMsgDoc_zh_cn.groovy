@@ -7,18 +7,18 @@ doc {
 
     category "network.service"
 
-    desc "获取网络服务类型"
+    desc """获取网络服务类型"""
 
     rest {
         request {
 			url "GET /v1/network-services/types"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIGetNetworkServiceTypesMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

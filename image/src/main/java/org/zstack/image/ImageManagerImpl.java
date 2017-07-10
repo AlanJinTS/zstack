@@ -2,6 +2,7 @@ package org.zstack.image;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
+import org.zstack.core.CoreGlobalProperty;
 import org.zstack.core.Platform;
 import org.zstack.core.asyncbatch.AsyncBatchRunner;
 import org.zstack.core.asyncbatch.LoopAsyncBatch;
@@ -11,11 +12,13 @@ import org.zstack.core.config.GlobalConfig;
 import org.zstack.core.config.GlobalConfigUpdateExtensionPoint;
 import org.zstack.core.db.DatabaseFacade;
 import org.zstack.core.db.SQL;
+import org.zstack.core.db.SQLBatchWithReturn;
 import org.zstack.core.db.SimpleQuery;
 import org.zstack.core.db.SimpleQuery.Op;
 import org.zstack.core.defer.Defer;
 import org.zstack.core.defer.Deferred;
 import org.zstack.core.errorcode.ErrorFacade;
+import org.zstack.core.notification.N;
 import org.zstack.core.thread.CancelablePeriodicTask;
 import org.zstack.core.thread.ThreadFacade;
 import org.zstack.core.workflow.FlowChainBuilder;
@@ -886,7 +889,10 @@ public class ImageManagerImpl extends AbstractService implements ImageManager, M
         } else {
             vo.setUuid(Platform.getUuid());
         }
-
+        if (!CoreGlobalProperty.UNIT_TEST_ON) {
+            long imageSizeAsked = new ImageQuotaUtil().getLocalImageSizeOnBackupStorage(msg);
+            vo.setActualSize(imageSizeAsked);
+        }
         vo.setName(msg.getName());
         vo.setDescription(msg.getDescription());
         if (msg.getFormat().equals(ImageConstant.ISO_FORMAT_STRING)) {
@@ -905,10 +911,15 @@ public class ImageManagerImpl extends AbstractService implements ImageManager, M
         vo.setPlatform(ImagePlatform.valueOf(msg.getPlatform()));
 
         ImageFactory factory = getImageFacotry(ImageType.valueOf(imageType));
-        final ImageVO ivo = factory.createImage(vo, msg);
-
-        acntMgr.createAccountResourceRef(msg.getSession().getAccountUuid(), vo.getUuid(), ImageVO.class);
-        tagMgr.createTagsFromAPICreateMessage(msg, vo.getUuid(), ImageVO.class.getSimpleName());
+        final ImageVO ivo = new SQLBatchWithReturn<ImageVO>() {
+            @Override
+            protected ImageVO scripts() {
+                final ImageVO ivo = factory.createImage(vo, msg);
+                acntMgr.createAccountResourceRef(msg.getSession().getAccountUuid(), vo.getUuid(), ImageVO.class);
+                tagMgr.createTagsFromAPICreateMessage(msg, vo.getUuid(), ImageVO.class.getSimpleName());
+                return ivo;
+            }
+        }.execute();
 
         Defer.guard(() -> dbf.remove(ivo));
 
@@ -1151,8 +1162,8 @@ public class ImageManagerImpl extends AbstractService implements ImageManager, M
                             @Override
                             public void run(MessageReply reply) {
                                 if (!reply.isSuccess()) {
-                                    //TODO
-                                    logger.warn(String.format("failed to expunge the image[uuid:%s], %s", images, reply.getError()));
+                                    N.New(ImageVO.class, imageUuid).warn_("failed to expunge the image[uuid:%s] on the backup storage[uuid:%s], will try it later. %s",
+                                            imageUuid, bsUuid, reply.getError());
                                 }
                             }
                         });

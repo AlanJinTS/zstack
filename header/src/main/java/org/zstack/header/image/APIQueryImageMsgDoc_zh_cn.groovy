@@ -2,26 +2,26 @@ package org.zstack.header.image
 
 import org.zstack.header.image.APIQueryImageReply
 import org.zstack.header.query.APIQueryMessage
+import org.zstack.header.query.APIQueryMessage
 
 doc {
     title "QueryImage"
 
     category "image"
 
-    desc "在这里填写API描述"
+    desc """在这里填写API描述"""
 
     rest {
         request {
 			url "GET /v1/images"
-
 			url "GET /v1/images/{uuid}"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIQueryImageMsg.class
 
-            desc ""
+            desc """"""
             
 			params APIQueryMessage.class
         }

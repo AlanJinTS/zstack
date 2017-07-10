@@ -1,9 +1,11 @@
 package org.zstack.test.integration.core.gc
 
 import org.zstack.core.db.DatabaseFacade
+import org.zstack.core.db.SQL
 import org.zstack.core.gc.GCCompletion
 import org.zstack.core.gc.GCGlobalConfig
 import org.zstack.core.gc.GCStatus
+import org.zstack.core.gc.GarbageCollector
 import org.zstack.core.gc.GarbageCollectorVO
 import org.zstack.core.gc.GarbageCollectorManagerImpl
 import org.zstack.core.gc.TimeBasedGarbageCollector
@@ -90,9 +92,10 @@ class TimeBasedGarbageCollectorCase extends SubCase {
         }
         gc.submit(500, TimeUnit.MILLISECONDS)
 
-        TimeUnit.SECONDS.sleep(1)
-        assert count == 1
-        assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        retryInSecs {
+            assert count == 1
+            assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        }
 
         // confirm the GC is not called anymore
         TimeUnit.SECONDS.sleep(1)
@@ -110,11 +113,12 @@ class TimeBasedGarbageCollectorCase extends SubCase {
         }
         gc.submit(500, TimeUnit.MILLISECONDS)
 
-        TimeUnit.SECONDS.sleep(2)
+        retryInSecs {
+            GarbageCollectorVO vo = dbFindByUuid(gc.uuid, GarbageCollectorVO.class)
+            assert vo != null
+            assert count > 1
+        }
 
-        GarbageCollectorVO vo = dbFindByUuid(gc.uuid, GarbageCollectorVO.class)
-        assert vo != null
-        assert count > 1
         gc.doCancel()
     }
 
@@ -129,9 +133,11 @@ class TimeBasedGarbageCollectorCase extends SubCase {
         }
         gc.submit(500, TimeUnit.MILLISECONDS)
 
-        TimeUnit.SECONDS.sleep(1)
-        assert called
-        assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+
+        retryInSecs {
+            assert called
+            assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        }
     }
 
     void testGCException() {
@@ -144,12 +150,13 @@ class TimeBasedGarbageCollectorCase extends SubCase {
         }
         gc.submit(500, TimeUnit.MILLISECONDS)
 
-        TimeUnit.SECONDS.sleep(2)
+        retryInSecs {
+            // confirm the job is still there
+            GarbageCollectorVO vo = dbFindByUuid(gc.uuid, GarbageCollectorVO.class)
+            assert count > 1
+            assert vo != null
+        }
 
-        // confirm the job is still there
-        GarbageCollectorVO vo = dbFindByUuid(gc.uuid, GarbageCollectorVO.class)
-        assert count > 1
-        assert vo != null
         gc.doCancel()
     }
 
@@ -173,9 +180,10 @@ class TimeBasedGarbageCollectorCase extends SubCase {
 
         gcMgr.managementNodeReady()
 
-        TimeUnit.SECONDS.sleep(1)
-        assert called
-        assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        retryInSecs {
+            assert called
+            assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        }
     }
 
     void testGCLoadedFromDbFailure() {
@@ -195,10 +203,11 @@ class TimeBasedGarbageCollectorCase extends SubCase {
 
         gcMgr.managementNodeReady()
 
-        TimeUnit.SECONDS.sleep(1)
-        vo = dbFindByUuid(gc.uuid, GarbageCollectorVO.class)
-        assert vo != null
-        assert vo.status == GCStatus.Idle
+        retryInSecs {
+            vo = dbFindByUuid(gc.uuid, GarbageCollectorVO.class)
+            assert vo != null
+            assert vo.status == GCStatus.Idle
+        }
     }
 
     void testGCLoadedFromDbCancel() {
@@ -220,9 +229,10 @@ class TimeBasedGarbageCollectorCase extends SubCase {
 
         gcMgr.managementNodeReady()
 
-        TimeUnit.SECONDS.sleep(1)
-        assert called
-        assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        retryInSecs {
+            assert called
+            assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        }
     }
 
     void testGCScanOrphan() {
@@ -245,9 +255,10 @@ class TimeBasedGarbageCollectorCase extends SubCase {
             return Behavior.SUCCESS
         }
 
-        TimeUnit.SECONDS.sleep(1)
-        assert called
-        assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        retryInSecs {
+            assert called
+            assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        }
     }
 
     void testGCInDBTriggeredByApiWithMgmtUuidNull() {
@@ -272,9 +283,10 @@ class TimeBasedGarbageCollectorCase extends SubCase {
             sessionId = adminSessionUuid
         }
 
-        TimeUnit.SECONDS.sleep(1)
-        assert called
-        assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        retryInSecs {
+            assert called
+            assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        }
     }
 
     void testGCInDBTriggeredByApiWithMgmtUuidNotNull() {
@@ -295,9 +307,10 @@ class TimeBasedGarbageCollectorCase extends SubCase {
             sessionId = adminSessionUuid
         }
 
-        TimeUnit.SECONDS.sleep(1)
-        assert called
-        assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        retryInSecs {
+            assert called
+            assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        }
     }
 
     void testQueryGCJob() {
@@ -340,6 +353,6 @@ class TimeBasedGarbageCollectorCase extends SubCase {
 
     @Override
     void clean() {
-        /* nothing */
+        SQL.New(GarbageCollectorVO.class).delete()
     }
 }

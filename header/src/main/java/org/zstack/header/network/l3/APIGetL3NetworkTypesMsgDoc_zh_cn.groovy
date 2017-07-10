@@ -7,25 +7,25 @@ doc {
 
     category "三层网络"
 
-    desc "获取三层网络类型"
+    desc """获取三层网络类型"""
 
     rest {
         request {
 			url "GET /v1/l3-networks/types"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIGetL3NetworkTypesMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
 				column {
 					name "systemTags"
- 					enclosedIn ""
- 					desc "系统标签"
+					enclosedIn ""
+					desc "系统标签"
 					location "query"
 					type "List"
 					optional true

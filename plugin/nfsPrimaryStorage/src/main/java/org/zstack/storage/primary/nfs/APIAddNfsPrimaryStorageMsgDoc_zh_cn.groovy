@@ -7,18 +7,18 @@ doc {
 
     category "storage.primary"
 
-    desc "添加 NFS 主存储"
+    desc """添加 NFS 主存储"""
 
     rest {
         request {
 			url "POST /v1/primary-storage/nfs"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIAddNfsPrimaryStorageMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -84,7 +84,7 @@ doc {
 				}
 				column {
 					name "systemTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "系统标签"
 					location "body"
 					type "List"
@@ -94,7 +94,7 @@ doc {
 				}
 				column {
 					name "userTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "用户标签"
 					location "body"
 					type "List"

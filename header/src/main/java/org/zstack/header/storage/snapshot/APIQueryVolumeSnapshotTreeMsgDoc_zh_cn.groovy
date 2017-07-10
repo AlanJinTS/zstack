@@ -1,5 +1,7 @@
 package org.zstack.header.storage.snapshot
 
+import org.zstack.header.storage.snapshot.APIQueryVolumeSnapshotTreeReply
+import org.zstack.header.query.APIQueryMessage
 import org.zstack.header.query.APIQueryMessage
 
 doc {
@@ -7,20 +9,19 @@ doc {
 
     category "snapshot.volume"
 
-    desc "查询快照树"
+    desc """查询快照树"""
 
     rest {
         request {
 			url "GET /v1/volume-snapshots/trees"
-
 			url "GET /v1/volume-snapshots/trees/{uuid}"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIQueryVolumeSnapshotTreeMsg.class
 
-            desc ""
+            desc """"""
             
 			params APIQueryMessage.class
         }

@@ -1,16 +1,12 @@
 package org.zstack.compute.vm;
 
+import org.apache.commons.lang.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.zstack.core.cloudbus.CloudBus;
-import org.zstack.core.db.DatabaseFacade;
-import org.zstack.core.db.Q;
-import org.zstack.core.db.SQL;
-import org.zstack.core.db.SimpleQuery;
+import org.zstack.core.db.*;
 import org.zstack.core.db.SimpleQuery.Op;
 import org.zstack.core.errorcode.ErrorFacade;
-import org.zstack.header.allocator.HostCapacityVO;
-import org.zstack.header.allocator.HostCapacityVO_;
 import org.zstack.header.apimediator.ApiMessageInterceptionException;
 import org.zstack.header.apimediator.ApiMessageInterceptor;
 import org.zstack.header.apimediator.StopRoutingException;
@@ -29,6 +25,7 @@ import org.zstack.header.image.ImageVO;
 import org.zstack.header.image.ImageVO_;
 import org.zstack.header.message.APIMessage;
 import org.zstack.header.network.l3.*;
+import org.zstack.header.storage.primary.PrimaryStorageState;
 import org.zstack.header.vm.*;
 import org.zstack.header.zone.ZoneState;
 import org.zstack.header.zone.ZoneVO;
@@ -37,6 +34,7 @@ import org.zstack.utils.network.NetworkUtils;
 
 import static org.zstack.core.Platform.argerr;
 import static org.zstack.core.Platform.operr;
+import static org.zstack.utils.CollectionDSL.list;
 
 import javax.persistence.Tuple;
 import javax.persistence.TypedQuery;
@@ -85,51 +83,111 @@ public class VmInstanceApiInterceptor implements ApiMessageInterceptor {
             validate((APISetVmStaticIpMsg) msg);
         } else if (msg instanceof APIStartVmInstanceMsg) {
             validate((APIStartVmInstanceMsg) msg);
-        } else if (msg instanceof APICreateStartVmInstanceSchedulerMsg) {
-            validate((APICreateStartVmInstanceSchedulerMsg) msg);
-        } else if (msg instanceof APICreateStopVmInstanceSchedulerMsg) {
-            validate((APICreateStopVmInstanceSchedulerMsg) msg);
-        } else if (msg instanceof APICreateRebootVmInstanceSchedulerMsg) {
-            validate((APICreateRebootVmInstanceSchedulerMsg) msg);
         } else if (msg instanceof APIGetInterdependentL3NetworksImagesMsg) {
             validate((APIGetInterdependentL3NetworksImagesMsg) msg);
         } else if (msg instanceof APIUpdateVmInstanceMsg) {
             validate((APIUpdateVmInstanceMsg) msg);
-        }else if (msg instanceof APISetVmConsolePasswordMsg) {
+        } else if (msg instanceof APISetVmConsolePasswordMsg) {
             validate((APISetVmConsolePasswordMsg) msg);
+        } else if (msg instanceof APIChangeInstanceOfferingMsg) {
+            validate((APIChangeInstanceOfferingMsg) msg);
+        } else if (msg instanceof APIMigrateVmMsg) {
+            validate((APIMigrateVmMsg) msg);
         }
+
         setServiceId(msg);
         return msg;
     }
 
-    @Transactional(readOnly = true)
-    private void validate(APIUpdateVmInstanceMsg msg) {
-        Integer cpuSum = msg.getCpuNum();
-        Long memorySize = msg.getMemorySize();
-        if (cpuSum == null && memorySize == null) {
-            return;
-        }
-        VmInstanceState vmState = Q.New(VmInstanceVO.class).select(VmInstanceVO_.state).eq(VmInstanceVO_.uuid, msg.getVmInstanceUuid()).findValue();
-        if (VmInstanceState.Stopped.equals(vmState)) {
-            return;
-        }
-        Tuple result = SQL.New(
-                "select sum(hc.availableCpu), sum(hc.availableMemory), vm.cpuNum, vm.memorySize" +
-                " from HostCapacityVO hc, HostVO host, VmInstanceVO vm" +
-                " where hc.uuid = host.uuid" +
-                " and host.state = :hstate" +
-                " and host.status = :hstatus", Tuple.class
-        ).param("hstate", HostState.Enabled).param("hstatus", HostStatus.Connected).find();
-        Long availableCpu = (Long) result.get(0);
-        Long availableMemory = (Long) result.get(1);
-        Integer usedCpu = (Integer) result.get(2);
-        Long usedMemory = (Long) result.get(3);
+    private void validate(APIMigrateVmMsg msg) {
+        new SQLBatch() {
+            @Override
+            protected void scripts() {
+                VmInstanceVO vo = findByUuid(msg.getVmInstanceUuid(), VmInstanceVO.class);
+                if (vo.getHostUuid().equals(msg.getHostUuid())) {
+                    throw new ApiMessageInterceptionException(argerr(
+                            "the vm[uuid:%s] is already on host[uuid:%s]", msg.getVmInstanceUuid(), msg.getHostUuid()
+                    ));
+                }
+            }
+        }.execute();
+    }
 
-        if ((cpuSum != null && cpuSum > (usedCpu + availableCpu) || (memorySize != null && memorySize > (usedMemory + availableMemory)))) {
-            throw new ApiMessageInterceptionException(argerr(
-                    "the host doesn't have enough capacity"
-            ));
-        }
+    private void validate(APIChangeInstanceOfferingMsg msg) {
+        new SQLBatch() {
+            @Override
+            protected void scripts() {
+                VmInstanceVO vo = Q.New(VmInstanceVO.class).eq(VmInstanceVO_.uuid, msg.getVmInstanceUuid()).find();
+                InstanceOfferingVO instanceOfferingVO = Q.New(InstanceOfferingVO.class).eq(InstanceOfferingVO_.uuid, msg.getInstanceOfferingUuid()).find();
+
+                if (!VmGlobalConfig.NUMA.value(Boolean.class) && !VmInstanceState.Stopped.equals(vo.getState())) {
+                    throw new ApiMessageInterceptionException(argerr(
+                            "the VM cannot do online cpu/memory update because it is not of NUMA architecture. Please stop the VM then do the cpu/memory update again"
+                    ));
+                }
+
+                if (!VmInstanceState.Stopped.equals(vo.getState()) && !VmInstanceState.Running.equals(vo.getState())) {
+                    throw new OperationFailureException(operr("The state of vm[uuid:%s] is %s. Only these state[%s] is allowed to update cpu or memory.",
+                            vo.getUuid(), vo.getState(),
+                            StringUtils.join(list(VmInstanceState.Running, VmInstanceState.Stopped), ",")));
+                }
+
+                if (VmInstanceState.Stopped.equals(vo.getState())) {
+                    return;
+                }
+
+                if (instanceOfferingVO.getCpuNum() < vo.getCpuNum() || instanceOfferingVO.getMemorySize() < vo.getMemorySize()) {
+                    throw new ApiMessageInterceptionException(argerr(
+                            "can't decrease capacity when vm[uuid:%s] is running", vo.getUuid()
+                    ));
+                }
+            }
+        }.execute();
+    }
+
+
+    private void validate(APIUpdateVmInstanceMsg msg) {
+        new SQLBatch() {
+            @Override
+            protected void scripts() {
+                VmInstanceVO vo = Q.New(VmInstanceVO.class).eq(VmInstanceVO_.uuid, msg.getVmInstanceUuid()).find();
+                Integer cpuSum = msg.getCpuNum();
+                Long memorySize = msg.getMemorySize();
+                if ((cpuSum == null && memorySize == null)) {
+                    return;
+                }
+
+                VmInstanceState vmState = Q.New(VmInstanceVO.class).select(VmInstanceVO_.state).eq(VmInstanceVO_.uuid, msg.getVmInstanceUuid()).findValue();
+                if (!VmGlobalConfig.NUMA.value(Boolean.class) && !VmInstanceState.Stopped.equals(vmState)) {
+                    throw new ApiMessageInterceptionException(argerr(
+                            "the VM cannot do online cpu/memory update because it is not of NUMA architecture. Please stop the VM then do the cpu/memory update again"
+                    ));
+                }
+
+                if (!VmInstanceState.Stopped.equals(vo.getState()) && !VmInstanceState.Running.equals(vo.getState())) {
+                    throw new OperationFailureException(operr("The state of vm[uuid:%s] is %s. Only these state[%s] is allowed to update cpu or memory.",
+                            vo.getUuid(), vo.getState(),
+                            StringUtils.join(list(VmInstanceState.Running, VmInstanceState.Stopped), ",")));
+                }
+
+
+                if (VmInstanceState.Stopped.equals(vmState)) {
+                    return;
+                }
+
+                if (msg.getCpuNum() != null && msg.getCpuNum() < vo.getCpuNum()) {
+                    throw new ApiMessageInterceptionException(argerr(
+                            "can't decrease cpu of vm[uuid:%s] when it is running", vo.getUuid()
+                    ));
+                }
+
+                if (msg.getMemorySize() != null && msg.getMemorySize() < vo.getMemorySize()) {
+                    throw new ApiMessageInterceptionException(argerr(
+                            "can't decrease memory size of vm[uuid:%s] when it is running", vo.getUuid()
+                    ));
+                }
+            }
+        }.execute();
     }
 
 
@@ -146,41 +204,18 @@ public class VmInstanceApiInterceptor implements ApiMessageInterceptor {
         if (msg.getHostUuid() != null) {
             msg.setClusterUuid(null);
         }
-    }
 
-    private void validate(APICreateStartVmInstanceSchedulerMsg msg) {
-        // host uuid overrides cluster uuid
-        if (msg.getHostUuid() != null) {
-            msg.setClusterUuid(null);
-        }
-
-        SimpleQuery<VmInstanceVO> q = dbf.createQuery(VmInstanceVO.class);
-        q.select(VmInstanceVO_.state);
-        q.add(VmInstanceVO_.uuid, Op.EQ, msg.getVmInstanceUuid());
-        VmInstanceState state = q.findValue();
-        if (state == VmInstanceState.Destroyed) {
-            throw new ApiMessageInterceptionException(operr("vm[uuid:%s] can only create scheduler when state is not Destroyed", msg.getVmInstanceUuid()));
-        }
-
-    }
-
-    private void validate(APICreateStopVmInstanceSchedulerMsg msg) {
-        SimpleQuery<VmInstanceVO> q = dbf.createQuery(VmInstanceVO.class);
-        q.select(VmInstanceVO_.state);
-        q.add(VmInstanceVO_.uuid, Op.EQ, msg.getVmInstanceUuid());
-        VmInstanceState state = q.findValue();
-        if (state == VmInstanceState.Destroyed) {
-            throw new ApiMessageInterceptionException(operr("vm[uuid:%s] can only create scheduler when state is not Destroyed", msg.getVmInstanceUuid()));
-        }
-    }
-
-    private void validate(APICreateRebootVmInstanceSchedulerMsg msg) {
-        SimpleQuery<VmInstanceVO> q = dbf.createQuery(VmInstanceVO.class);
-        q.select(VmInstanceVO_.state);
-        q.add(VmInstanceVO_.uuid, Op.EQ, msg.getVmInstanceUuid());
-        VmInstanceState state = q.findValue();
-        if (state == VmInstanceState.Destroyed) {
-            throw new ApiMessageInterceptionException(operr("vm[uuid:%s] can only create scheduler when state is not Destroyed", msg.getVmInstanceUuid()));
+        // validate vm disks primary storage state
+        String sql = "select uuid from PrimaryStorageVO where uuid in (" +
+                " select distinct(primaryStorageUuid) from VolumeVO" +
+                " where vmInstanceUuid = :vmUuid and primaryStorageUuid is not null)" +
+                " and state = :psState";
+        List<String> result = SQL.New(sql, String.class)
+                .param("vmUuid", msg.getUuid())
+                .param("psState", PrimaryStorageState.Maintenance)
+                .list();
+        if(result != null && !result.isEmpty()){
+            throw new ApiMessageInterceptionException(argerr("the VM[uuid:%s] volume stored location primary storage is in a state of maintenance", msg.getVmInstanceUuid()));
         }
     }
 
@@ -234,12 +269,9 @@ public class VmInstanceApiInterceptor implements ApiMessageInterceptor {
         Tuple t = q.findTuple();
         String type = t.get(0, String.class);
         VmInstanceState state = t.get(1, VmInstanceState.class);
-        if (!VmInstanceConstant.USER_VM_TYPE.equals(type)) {
-            throw new ApiMessageInterceptionException(operr("unable to attach a L3 network. The vm[uuid: %s] is not a user vm", type));
-        }
 
         if (!VmInstanceState.Running.equals(state) && !VmInstanceState.Stopped.equals(state)) {
-            throw new ApiMessageInterceptionException(operr("unable to detach a L3 network. The vm[uuid: %s] is not Running or Stopped; the current state is %s",
+            throw new ApiMessageInterceptionException(operr("unable to attach a L3 network. The vm[uuid: %s] is not Running or Stopped; the current state is %s",
                             msg.getVmInstanceUuid(), state));
         }
 
@@ -260,8 +292,10 @@ public class VmInstanceApiInterceptor implements ApiMessageInterceptor {
         if (l3state == L3NetworkState.Disabled) {
             throw new ApiMessageInterceptionException(operr("unable to attach a L3 network. The L3 network[uuid:%s] is disabled", msg.getL3NetworkUuid()));
         }
-        if (system) {
+        if (VmInstanceConstant.USER_VM_TYPE.equals(type) && system) {
             throw new ApiMessageInterceptionException(operr("unable to attach a L3 network. The L3 network[uuid:%s] is a system network", msg.getL3NetworkUuid()));
+        } else if (!VmInstanceConstant.USER_VM_TYPE.equals(type) && !system) {
+            throw new ApiMessageInterceptionException(operr("unable to attach a L3 network. The vm[uuid: %s] is not a user vm", type));
         }
 
         if (msg.getStaticIp() != null) {
@@ -300,10 +334,6 @@ public class VmInstanceApiInterceptor implements ApiMessageInterceptor {
         String vmType = t.get(1, String.class);
         VmInstanceState state = t.get(2, VmInstanceState.class);
 
-        if (!VmInstanceConstant.USER_VM_TYPE.equals(vmType)) {
-            throw new ApiMessageInterceptionException(operr("unable to detach a L3 network. The vm[uuid: %s] is not a user vm", msg.getVmInstanceUuid()));
-        }
-
         if (!VmInstanceState.Running.equals(state) && !VmInstanceState.Stopped.equals(state)) {
             throw new ApiMessageInterceptionException(operr("unable to detach a L3 network. The vm[uuid: %s] is not Running or Stopped; the current state is %s",
                             msg.getVmInstanceUuid(), state));
@@ -335,11 +365,16 @@ public class VmInstanceApiInterceptor implements ApiMessageInterceptor {
 
     private void validate(APICreateVmInstanceMsg msg) {
         SimpleQuery<InstanceOfferingVO> iq = dbf.createQuery(InstanceOfferingVO.class);
-        iq.select(InstanceOfferingVO_.state);
+        iq.select(InstanceOfferingVO_.state, InstanceOfferingVO_.type);
         iq.add(InstanceOfferingVO_.uuid, Op.EQ, msg.getInstanceOfferingUuid());
-        InstanceOfferingState istate = iq.findValue();
+        Tuple inst = iq.findTuple();
+        InstanceOfferingState istate = inst.get(0, InstanceOfferingState.class);
+        String itype = inst.get(1, String.class);
         if (istate == InstanceOfferingState.Disabled) {
             throw new ApiMessageInterceptionException(operr("instance offering[uuid:%s] is Disabled, can't create vm from it", msg.getInstanceOfferingUuid()));
+        }
+        if (!itype.equals(VmInstanceConstant.USER_VM_TYPE)){
+            throw new ApiMessageInterceptionException(operr("instance offering[uuid:%s, type:%s] is not UserVm type, can't create vm from it", msg.getInstanceOfferingUuid(), itype));
         }
 
         SimpleQuery<ImageVO> imgq = dbf.createQuery(ImageVO.class);

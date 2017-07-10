@@ -3,23 +3,20 @@ package org.zstack.network.l2.vxlan.vxlanNetworkPool;
 import org.zstack.header.network.l2.L2NetworkEO;
 import org.zstack.header.tag.AutoDeleteTag;
 import org.zstack.header.vo.ForeignKey;
+import org.zstack.header.vo.ResourceVO;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.Table;
+import java.sql.Timestamp;
 
 /**
  * Created by weiwang on 08/03/2017.
  */
 @Entity
 @Table
-@AutoDeleteTag
-public class VniRangeVO {
-    @Id
-    @Column
-    private String uuid;
-
+public class VniRangeVO extends ResourceVO {
     @Column
     private String name;
 
@@ -33,16 +30,30 @@ public class VniRangeVO {
     private Integer endVni;
 
     @Column
+    private Timestamp createDate;
+
+    @Column
+    private Timestamp lastOpDate;
+
+    public Timestamp getCreateDate() {
+        return createDate;
+    }
+
+    public void setCreateDate(Timestamp createDate) {
+        this.createDate = createDate;
+    }
+
+    public Timestamp getLastOpDate() {
+        return lastOpDate;
+    }
+
+    public void setLastOpDate(Timestamp lastOpDate) {
+        this.lastOpDate = lastOpDate;
+    }
+
+    @Column
     @ForeignKey(parentEntityClass = L2NetworkEO.class, onDeleteAction = ForeignKey.ReferenceOption.CASCADE)
     private String l2NetworkUuid;
-
-    public String getUuid() {
-        return uuid;
-    }
-
-    public void setUuid(String uuid) {
-        this.uuid = uuid;
-    }
 
     public String getName() {
         return name;

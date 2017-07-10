@@ -7,24 +7,24 @@ doc {
 
     category "负载均衡"
 
-    desc "从负载均衡移除云主机网卡"
+    desc """从负载均衡移除云主机网卡"""
 
     rest {
         request {
 			url "DELETE /v1/load-balancers/listeners/{listenerUuid}/vm-instances/nics"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIRemoveVmNicFromLoadBalancerMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
 				column {
 					name "vmNicUuids"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "云主机网卡UUID"
 					location "body"
 					type "List"
@@ -34,7 +34,7 @@ doc {
 				}
 				column {
 					name "listenerUuid"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "负载均衡监听器UUID"
 					location "url"
 					type "String"

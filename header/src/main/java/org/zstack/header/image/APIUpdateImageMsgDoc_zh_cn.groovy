@@ -1,28 +1,30 @@
 package org.zstack.header.image
 
+import org.zstack.header.image.APIUpdateImageEvent
+
 doc {
     title "更新镜像信息(UpdateImage)"
 
     category "image"
 
-    desc "更新镜像信息"
+    desc """更新镜像信息"""
 
     rest {
         request {
 			url "PUT /v1/images/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIUpdateImageMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
 				column {
 					name "uuid"
-					enclosedIn "params"
+					enclosedIn "updateImage"
 					desc "镜像的UUID，唯一标示该镜像"
 					location "url"
 					type "String"
@@ -32,7 +34,7 @@ doc {
 				}
 				column {
 					name "name"
-					enclosedIn "params"
+					enclosedIn "updateImage"
 					desc "镜像名称"
 					location "body"
 					type "String"
@@ -42,7 +44,7 @@ doc {
 				}
 				column {
 					name "description"
-					enclosedIn "params"
+					enclosedIn "updateImage"
 					desc "镜像的详细描述"
 					location "body"
 					type "String"
@@ -52,7 +54,7 @@ doc {
 				}
 				column {
 					name "guestOsType"
-					enclosedIn "params"
+					enclosedIn "updateImage"
 					desc "镜像对应的客户机操作系统类型"
 					location "body"
 					type "String"
@@ -62,7 +64,7 @@ doc {
 				}
 				column {
 					name "mediaType"
-					enclosedIn "params"
+					enclosedIn "updateImage"
 					desc "镜像的类型"
 					location "body"
 					type "String"
@@ -72,7 +74,7 @@ doc {
 				}
 				column {
 					name "format"
-					enclosedIn "params"
+					enclosedIn "updateImage"
 					desc "镜像的格式"
 					location "body"
 					type "String"
@@ -82,7 +84,7 @@ doc {
 				}
 				column {
 					name "system"
-					enclosedIn "params"
+					enclosedIn "updateImage"
 					desc "标识是否为系统镜像"
 					location "body"
 					type "Boolean"
@@ -92,7 +94,7 @@ doc {
 				}
 				column {
 					name "platform"
-					enclosedIn "params"
+					enclosedIn "updateImage"
 					desc "镜像的系统平台"
 					location "body"
 					type "String"
@@ -102,7 +104,7 @@ doc {
 				}
 				column {
 					name "systemTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "系统标签"
 					location "body"
 					type "List"
@@ -112,7 +114,7 @@ doc {
 				}
 				column {
 					name "userTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "用户标签"
 					location "body"
 					type "List"

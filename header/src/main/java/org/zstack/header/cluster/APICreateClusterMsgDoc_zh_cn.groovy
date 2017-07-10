@@ -7,18 +7,18 @@ doc {
 
     category "cluster"
 
-    desc "管理员可以使用CreateCluster命令来创建一个集群"
+    desc """管理员可以使用CreateCluster命令来创建一个集群"""
 
     rest {
         request {
 			url "POST /v1/clusters"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APICreateClusterMsg.class
 
-            desc "管理员可以使用CreateCluster命令来创建一个集群"
+            desc """管理员可以使用CreateCluster命令来创建一个集群"""
             
 			params {
 

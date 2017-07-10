@@ -6,11 +6,8 @@ import org.zstack.core.Platform;
 import org.zstack.core.cloudbus.CloudBus;
 import org.zstack.core.cloudbus.MessageSafe;
 import org.zstack.core.componentloader.PluginRegistry;
-import org.zstack.core.db.DatabaseFacade;
-import org.zstack.core.db.SQL;
-import org.zstack.core.db.SimpleQuery;
+import org.zstack.core.db.*;
 import org.zstack.core.db.SimpleQuery.Op;
-import org.zstack.core.db.UpdateQuery;
 import org.zstack.core.errorcode.ErrorFacade;
 import org.zstack.core.workflow.FlowChainBuilder;
 import org.zstack.core.workflow.ShareFlow;
@@ -43,6 +40,7 @@ import org.zstack.utils.Utils;
 import org.zstack.utils.function.Function;
 import org.zstack.utils.logging.CLogger;
 
+import static org.zstack.core.Platform.err;
 import static org.zstack.core.Platform.operr;
 
 import javax.persistence.Tuple;
@@ -226,11 +224,26 @@ public class EipManagerImpl extends AbstractService implements EipManager, VipRe
         return VmNicInventory.valueOf(nics);
     }
 
+    private List<VmNicInventory> callCandidateVmNicsForEipInVirtualRouterExtensionPoint(APIGetEipAttachableVmNicsMsg msg, List<VmNicInventory> vmNics) {
+        List<VmNicInventory> ret = new ArrayList<>();
+        for (GetCandidateVmNicsForEipInVirtualRouterExtensionPoint extp : pluginRgty.getExtensionList(GetCandidateVmNicsForEipInVirtualRouterExtensionPoint.class)) {
+            ret = extp.getCandidateVmNicsForEipInVirtualRouter(msg,vmNics);
+        }
+        return ret;
+    }
+
+
     private void handle(APIGetEipAttachableVmNicsMsg msg) {
         APIGetEipAttachableVmNicsReply reply = new APIGetEipAttachableVmNicsReply();
-        List<VmNicInventory> nics = getAttachableVmNicForEip(msg.getEipUuid(), msg.getVipUuid());
-        reply.setInventories(nics);
-        bus.reply(msg, reply);
+        String vmNicUuid = Q.New(EipVO.class).select(EipVO_.vmNicUuid).eq(EipVO_.uuid,msg.getEipUuid()).findValue();
+        if (vmNicUuid != null){
+            reply.setInventories(new ArrayList<>());
+            bus.reply(msg, reply);
+        } else {
+            List<VmNicInventory> nics = getAttachableVmNicForEip(msg.getEipUuid(), msg.getVipUuid());
+            reply.setInventories(callCandidateVmNicsForEipInVirtualRouterExtensionPoint(msg, nics));
+            bus.reply(msg, reply);
+        }
     }
 
     private void handle(APIChangeEipStateMsg msg) {
@@ -366,6 +379,16 @@ public class EipManagerImpl extends AbstractService implements EipManager, VipRe
 
                     @Override
                     public void run(FlowTrigger trigger, Map data) {
+                        boolean callBackend = Q.New(VmInstanceVO.class).select(VmInstanceVO_.state)
+                                .eq(VmInstanceVO_.uuid, nicvo.getVmInstanceUuid()).findValue() == VmInstanceState.Running;
+
+                        if (!callBackend) {
+                            logger.warn(String.format("the vm[uuid:%s] is not running, no need to delete the EIP[uuid:%s] from the backend",
+                                    nicvo.getVmInstanceUuid(), struct.getEip().getUuid()));
+                            trigger.next();
+                            return;
+                        }
+
                         EipBackend bkd = getEipBackend(providerType.toString());
                         bkd.revokeEip(struct, new Completion(trigger) {
                             @Override
@@ -375,10 +398,10 @@ public class EipManagerImpl extends AbstractService implements EipManager, VipRe
 
                             @Override
                             public void fail(ErrorCode errorCode) {
-                                //TODO
+                                //TODO: add GC instead of failing the API
                                 logger.warn(String.format("failed to detach eip[uuid:%s, ip:%s, vm nic uuid:%s] on service provider[%s], service provider will garbage collect. %s",
                                         struct.getEip().getUuid(), struct.getVip().getIp(), struct.getNic().getUuid(), providerType, errorCode));
-                                trigger.next();
+                                trigger.fail(errorCode);
                             }
                         });
                     }
@@ -443,10 +466,17 @@ public class EipManagerImpl extends AbstractService implements EipManager, VipRe
 
         vo.setVmNicUuid(msg.getVmNicUuid());
         vo.setState(EipState.Enabled);
-        vo = dbf.persistAndRefresh(vo);
-
-        acntMgr.createAccountResourceRef(msg.getSession().getAccountUuid(), vo.getUuid(), EipVO.class);
-        tagMgr.createTagsFromAPICreateMessage(msg, vo.getUuid(), EipVO.class.getSimpleName());
+        EipVO finalVo1 = vo;
+        vo = new SQLBatchWithReturn<EipVO>() {
+            @Override
+            protected EipVO scripts() {
+                persist(finalVo1);
+                reload(finalVo1);
+                acntMgr.createAccountResourceRef(msg.getSession().getAccountUuid(), finalVo1.getUuid(), EipVO.class);
+                tagMgr.createTagsFromAPICreateMessage(msg, finalVo1.getUuid(), EipVO.class.getSimpleName());
+                return finalVo1;
+            }
+        }.execute();
 
         VipVO vipvo = dbf.findByUuid(msg.getVipUuid(), VipVO.class);
         final VipInventory vipInventory = VipInventory.valueOf(vipvo);
@@ -672,10 +702,10 @@ public class EipManagerImpl extends AbstractService implements EipManager, VipRe
 
                             @Override
                             public void fail(ErrorCode errorCode) {
-                                //TODO
+                                //TODO add GC instead of failing the API
                                 logger.warn(String.format("failed to detach eip[uuid:%s, ip:%s, vm nic uuid:%s] on service provider[%s], service provider will garbage collect. %s",
                                         struct.getEip().getUuid(), struct.getVip().getIp(), struct.getNic().getUuid(), providerType, errorCode));
-                                trigger.next();
+                                trigger.fail(errorCode);
                             }
                         });
                     }
@@ -1128,4 +1158,6 @@ public class EipManagerImpl extends AbstractService implements EipManager, VipRe
             acntMgr.changeResourceOwner(uuid, newOwnerUuid);
         }
     }
+
+
 }

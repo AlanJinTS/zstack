@@ -21,13 +21,6 @@ import java.util.Map;
 
 
 public class VmInstanceSpec implements Serializable {
-    public String getRequiredPrimaryStorageUuidForRootVolume() {
-        return requiredPrimaryStorageUuidForRootVolume;
-    }
-
-    public void setRequiredPrimaryStorageUuidForRootVolume(String requiredPrimaryStorageUuidForRootVolume) {
-        this.requiredPrimaryStorageUuidForRootVolume = requiredPrimaryStorageUuidForRootVolume;
-    }
 
     public static class VolumeSpec {
         private PrimaryStorageInventory primaryStorageInventory;
@@ -174,6 +167,7 @@ public class VmInstanceSpec implements Serializable {
     private String requiredClusterUuid;
     private String requiredHostUuid;
     private String requiredPrimaryStorageUuidForRootVolume;
+    private String requiredPrimaryStorageUuidForDataVolume;
 
     private List<HostName> hostnames = new ArrayList<>();
     private HostInventory destHost;
@@ -188,9 +182,18 @@ public class VmInstanceSpec implements Serializable {
     private String userdata;
     private List<String> bootOrders;
     private boolean gcOnStopFailure;
+    // usbRedirect only for http call, need string type
+    private String usbRedirect = "false";
     private String consolePassword;
-    private boolean instanceOfferingOnlineChange;
     private VmAccountPreference accountPerference;
+
+    public String getUsbRedirect() {
+        return usbRedirect;
+    }
+
+    public void setUsbRedirect(String usbRedirect) {
+        this.usbRedirect = usbRedirect;
+    }
 
     public VmAccountPreference getAccountPerference() {
         return accountPerference;
@@ -238,14 +241,6 @@ public class VmInstanceSpec implements Serializable {
 
     public void setConsolePassword(String consolePassword) {
         this.consolePassword = consolePassword;
-    }
-
-    public boolean getInstanceOfferingOnlineChange() {
-        return instanceOfferingOnlineChange;
-    }
-
-    public void setInstanceOfferingOnlineChange(boolean instanceOfferingOnlineChange) {
-        this.instanceOfferingOnlineChange = instanceOfferingOnlineChange;
     }
 
     public String getUserdata() {
@@ -422,5 +417,21 @@ public class VmInstanceSpec implements Serializable {
             }
         }
         return nsTypes;
+    }
+
+    public String getRequiredPrimaryStorageUuidForRootVolume() {
+        return requiredPrimaryStorageUuidForRootVolume;
+    }
+
+    public void setRequiredPrimaryStorageUuidForRootVolume(String requiredPrimaryStorageUuidForRootVolume) {
+        this.requiredPrimaryStorageUuidForRootVolume = requiredPrimaryStorageUuidForRootVolume;
+    }
+
+    public String getRequiredPrimaryStorageUuidForDataVolume() {
+        return requiredPrimaryStorageUuidForDataVolume;
+    }
+
+    public void setRequiredPrimaryStorageUuidForDataVolume(String requiredPrimaryStorageUuidForDataVolume) {
+        this.requiredPrimaryStorageUuidForDataVolume = requiredPrimaryStorageUuidForDataVolume;
     }
 }

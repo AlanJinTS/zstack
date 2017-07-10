@@ -7,18 +7,18 @@ doc {
 
     category "负载均衡"
 
-    desc "删除负载均衡器"
+    desc """删除负载均衡器"""
 
     rest {
         request {
 			url "DELETE /v1/load-balancers/{uuid}"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIDeleteLoadBalancerMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -34,8 +34,8 @@ doc {
 				}
 				column {
 					name "deleteMode"
- 					enclosedIn ""
- 					desc "删除模式"
+					enclosedIn ""
+					desc "删除模式"
 					location "body"
 					type "String"
 					optional true

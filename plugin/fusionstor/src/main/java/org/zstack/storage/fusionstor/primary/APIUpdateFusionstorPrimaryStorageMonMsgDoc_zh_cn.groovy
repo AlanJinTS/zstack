@@ -7,18 +7,18 @@ doc {
 
     category "未知类别"
 
-    desc "在这里填写API描述"
+    desc """在这里填写API描述"""
 
     rest {
         request {
 			url "PUT /v1/primary-storage/fusionstor/mons/{monUuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIUpdateFusionstorPrimaryStorageMonMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

@@ -70,6 +70,7 @@ public class VirtualRouterDhcpBackend extends AbstractVirtualRouterBackend imple
                 e.setNetmask(struct.getNetmask());
                 e.setDnsDomain(struct.getDnsDomain());
                 e.setHostname(struct.getHostname());
+                e.setMtu(struct.getMtu());
 
                 if (e.isDefaultL3Network()) {
                     if (e.getHostname() == null) {
@@ -187,7 +188,7 @@ public class VirtualRouterDhcpBackend extends AbstractVirtualRouterBackend imple
                 if (!reply.isSuccess()) {
                     logger.warn(String.format("unable to remove dhcp entry[%s] from virtual router vm[uuid:%s, ip:%s], %s", struct, vr.getUuid(), vr
                             .getManagementNic().getIp(), reply.getError()));
-                    //TODO: schedule a job to clean up
+                    //TODO: GC
                 } else {
                     VirtualRouterAsyncHttpCallReply ret = reply.castReply();
                     if (ret.isSuccess()) {
@@ -196,7 +197,7 @@ public class VirtualRouterDhcpBackend extends AbstractVirtualRouterBackend imple
                     } else {
                         logger.warn(String.format("unable to remove dhcp entry[%s] from virtual router vm[uuid:%s, ip:%s], %s", struct, vr.getUuid(), vr
                                 .getManagementNic().getIp(), ret.getError()));
-                        //TODO: schedule a job to clean up
+                        //TODO: GC
                     }
                 }
 

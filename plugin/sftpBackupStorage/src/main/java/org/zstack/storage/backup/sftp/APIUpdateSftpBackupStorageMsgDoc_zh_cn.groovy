@@ -7,18 +7,18 @@ doc {
 
     category "storage.backup.sftp"
 
-    desc "更新Sftp镜像服务器属性"
+    desc """更新Sftp镜像服务器属性"""
 
     rest {
         request {
 			url "PUT /v1/backup-storage/sftp/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIUpdateSftpBackupStorageMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

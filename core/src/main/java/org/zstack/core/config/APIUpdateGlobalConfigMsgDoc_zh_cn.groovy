@@ -7,18 +7,18 @@ doc {
 
     category "globalConfig"
 
-    desc "更新全局配置"
+    desc """更新全局配置"""
 
     rest {
         request {
 			url "PUT /v1/global-configurations/{category}/{name}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIUpdateGlobalConfigMsg.class
 
-            desc "更新全局配置"
+            desc """更新全局配置"""
             
 			params {
 

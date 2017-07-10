@@ -10,9 +10,12 @@ class KvmTest extends Test {
     static SpringSpec springSpec = makeSpring {
         sftpBackupStorage()
         localStorage()
+        nfsPrimaryStorage()
         virtualRouter()
+        flatNetwork()
         securityGroup()
         kvm()
+        ceph()
     }
 
     @Override

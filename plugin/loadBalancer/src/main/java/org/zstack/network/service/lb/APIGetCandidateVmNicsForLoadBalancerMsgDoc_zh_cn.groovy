@@ -7,18 +7,18 @@ doc {
 
     category "负载均衡"
 
-    desc "获取可供负载均衡器添加的云主机网卡"
+    desc """获取可供负载均衡器添加的云主机网卡"""
 
     rest {
         request {
 			url "GET /v1/load-balancers/listeners/{listenerUuid}/vm-instances/candidate-nics"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIGetCandidateVmNicsForLoadBalancerMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

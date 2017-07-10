@@ -7,18 +7,18 @@ doc {
 
     category "弹性IP"
 
-    desc "创建弹性IP"
+    desc """创建弹性IP"""
 
     rest {
         request {
 			url "POST /v1/eips"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APICreateEipMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -74,8 +74,8 @@ doc {
 				}
 				column {
 					name "systemTags"
- 					enclosedIn ""
- 					desc "EIP的系统标签"
+					enclosedIn ""
+					desc "EIP的系统标签"
 					location "body"
 					type "List"
 					optional true

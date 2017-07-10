@@ -12,6 +12,7 @@ import org.zstack.core.cloudbus.CloudBusListCallBack;
 import org.zstack.core.cloudbus.EventFacade;
 import org.zstack.core.db.DatabaseFacade;
 import org.zstack.core.db.Q;
+import org.zstack.core.db.SQL;
 import org.zstack.core.db.SimpleQuery;
 import org.zstack.core.db.SimpleQuery.Op;
 import org.zstack.core.errorcode.ErrorFacade;
@@ -42,18 +43,17 @@ import org.zstack.header.storage.snapshot.VolumeSnapshotConstant;
 import org.zstack.header.storage.snapshot.VolumeSnapshotReportPrimaryStorageCapacityUsageMsg;
 import org.zstack.header.storage.snapshot.VolumeSnapshotReportPrimaryStorageCapacityUsageReply;
 import org.zstack.header.vm.StopVmInstanceMsg;
+import org.zstack.header.vm.VmAttachVolumeValidatorMethod;
 import org.zstack.header.vm.VmInstanceConstant;
 import org.zstack.header.volume.VolumeConstant;
 import org.zstack.header.volume.VolumeReportPrimaryStorageCapacityUsageMsg;
 import org.zstack.header.volume.VolumeReportPrimaryStorageCapacityUsageReply;
+import org.zstack.header.volume.VolumeType;
 import org.zstack.utils.DebugUtils;
 import org.zstack.utils.Utils;
 import org.zstack.utils.logging.CLogger;
-
 import static org.zstack.core.Platform.operr;
-
 import javax.persistence.LockModeType;
-import javax.persistence.Query;
 import javax.persistence.TypedQuery;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -182,16 +182,15 @@ public abstract class PrimaryStorageBase extends AbstractPrimaryStorage {
         }
     }
     // if new kind of storage is added , override it
-    protected void checkImageIfNeedToDownload(String ImageUuid){
+    protected void checkImageIfNeedToDownload(DownloadIsoToPrimaryStorageMsg msg){
         logger.debug("check if image exist in disabled primary storage");
         if(self.getState() != PrimaryStorageState.Disabled){
             return ;
         }
-        if( Q.New(ImageCacheVO.class)
+        if( !Q.New(ImageCacheVO.class)
                 .eq(ImageCacheVO_.primaryStorageUuid, self.getUuid())
-                .eq(ImageCacheVO_.imageUuid, ImageUuid)
-                .select(ImageCacheVO_.installUrl)
-                .findValue() == null){
+                .eq(ImageCacheVO_.imageUuid, msg.getIsoSpec().getInventory().getUuid())
+                .isExists()){
 
             throw new OperationFailureException(errf.stringToOperationError(
                     String.format("cannot attach ISO to a primary storage[uuid:%s] which is disabled",
@@ -261,6 +260,8 @@ public abstract class PrimaryStorageBase extends AbstractPrimaryStorage {
         checkPrimaryStatus(msg);
         if (msg instanceof PrimaryStorageReportPhysicalCapacityMsg) {
             handle((PrimaryStorageReportPhysicalCapacityMsg) msg);
+        } else if (msg instanceof RecalculatePrimaryStorageCapacityMsg) {
+            handle((RecalculatePrimaryStorageCapacityMsg) msg);
         } else if (msg instanceof InstantiateVolumeOnPrimaryStorageMsg) {
             handle((InstantiateVolumeOnPrimaryStorageMsg) msg);
         } else if (msg instanceof DeleteVolumeOnPrimaryStorageMsg) {
@@ -299,9 +300,36 @@ public abstract class PrimaryStorageBase extends AbstractPrimaryStorage {
             handle((MergeVolumeSnapshotOnPrimaryStorageMsg) msg);
         } else if (msg instanceof DeleteSnapshotOnPrimaryStorageMsg) {
             handle((DeleteSnapshotOnPrimaryStorageMsg) msg);
+        } else if (msg instanceof UpdatePrimaryStorageHostStatusMsg) {
+            handle((UpdatePrimaryStorageHostStatusMsg) msg);
         } else {
             bus.dealWithUnknownMessage(msg);
         }
+    }
+
+    protected void handle(UpdatePrimaryStorageHostStatusMsg msg){
+        updatePrimaryStorageHostStatus(msg.getPrimaryStorageUuids(), msg.getHostUuid(), msg.getStatus());
+    }
+
+    @Transactional
+    private void updatePrimaryStorageHostStatus(List<String> psUuids, String hostUuid, PrimaryStorageHostStatus status){
+        for(String psUuid : psUuids){
+            PrimaryStorageHostRefVO ref = new PrimaryStorageHostRefVO();
+            ref.setHostUuid(hostUuid);
+            ref.setPrimaryStorageUuid(psUuid);
+            ref.setStatus(status);
+            dbf.getEntityManager().merge(ref);
+            logger.debug(String.format("From agent report: change status between primary storage[uuid:%s] and host[uuid:%s] to %s in db",
+                    psUuid, hostUuid, status));
+        }
+    }
+
+    protected void handle(RecalculatePrimaryStorageCapacityMsg msg) {
+        RecalculatePrimaryStorageCapacityReply reply = new RecalculatePrimaryStorageCapacityReply();
+        PrimaryStorageCapacityRecalculator recalculator = new PrimaryStorageCapacityRecalculator();
+        recalculator.psUuids = Arrays.asList(msg.getPrimaryStorageUuid());
+        recalculator.recalculate();
+        bus.reply(msg, reply);
     }
 
     protected void handle(ReconnectPrimaryStorageMsg msg) {
@@ -352,7 +380,7 @@ public abstract class PrimaryStorageBase extends AbstractPrimaryStorage {
 
     private void handleBase(DownloadIsoToPrimaryStorageMsg msg) {
         checkIfBackupStorageAttachedToMyZone(msg.getIsoSpec().getSelectedBackupStorage().getBackupStorageUuid());
-        checkImageIfNeedToDownload(msg.getIsoSpec().getInventory().getUuid());
+        checkImageIfNeedToDownload(msg);
         handle(msg);
     }
 
@@ -373,6 +401,11 @@ public abstract class PrimaryStorageBase extends AbstractPrimaryStorage {
                         self = dbf.reload(self);
                         changeStatus(PrimaryStorageStatus.Connected);
                         logger.debug(String.format("successfully connected primary storage[uuid:%s]", self.getUuid()));
+
+                        RecalculatePrimaryStorageCapacityMsg rmsg = new RecalculatePrimaryStorageCapacityMsg();
+                        rmsg.setPrimaryStorageUuid(self.getUuid());
+                        bus.makeLocalServiceId(rmsg, PrimaryStorageConstant.SERVICE_ID);
+                        bus.send(rmsg);
 
                         tracker.track(self.getUuid());
 
@@ -466,12 +499,6 @@ public abstract class PrimaryStorageBase extends AbstractPrimaryStorage {
                 detachHook(msg.getClusterUuid(), new Completion(msg, chain) {
                     @Override
                     public void success() {
-                        SimpleQuery<PrimaryStorageClusterRefVO> q = dbf.createQuery(PrimaryStorageClusterRefVO.class);
-                        q.add(PrimaryStorageClusterRefVO_.clusterUuid, Op.EQ, msg.getClusterUuid());
-                        q.add(PrimaryStorageClusterRefVO_.primaryStorageUuid, Op.EQ, msg.getPrimaryStorageUuid());
-                        List<PrimaryStorageClusterRefVO> refs = q.list();
-                        dbf.removeCollection(refs, PrimaryStorageClusterRefVO.class);
-
                         self = dbf.reload(self);
                         extpEmitter.afterDetach(self, msg.getClusterUuid());
 
@@ -673,7 +700,7 @@ public abstract class PrimaryStorageBase extends AbstractPrimaryStorage {
         }).start();
     }
 
-    protected PrimaryStorageVO updatePrimaryStorage(APIUpdatePrimaryStorageMsg msg) {
+    protected void updatePrimaryStorage(APIUpdatePrimaryStorageMsg msg, ReturnValueCompletion<PrimaryStorageVO> completion) {
         boolean update = false;
         if (msg.getName() != null) {
             self.setName(msg.getName());
@@ -683,20 +710,27 @@ public abstract class PrimaryStorageBase extends AbstractPrimaryStorage {
             self.setDescription(msg.getDescription());
             update = true;
         }
-
-        return update ? self : null;
+        completion.success(update? self : null);
     }
 
     private void handle(APIUpdatePrimaryStorageMsg msg) {
-        PrimaryStorageVO vo = updatePrimaryStorage(msg);
-
-        if (vo != null) {
-            self = dbf.updateAndRefresh(vo);
-        }
-
         APIUpdatePrimaryStorageEvent evt = new APIUpdatePrimaryStorageEvent(msg.getId());
-        evt.setInventory(getSelfInventory());
-        bus.publish(evt);
+        updatePrimaryStorage(msg, new ReturnValueCompletion<PrimaryStorageVO>(msg) {
+            @Override
+            public void success(PrimaryStorageVO vo) {
+                if (vo != null){
+                    self = dbf.updateAndRefresh(vo);
+                }
+                evt.setInventory(getSelfInventory());
+                bus.publish(evt);
+            }
+
+            @Override
+            public void fail(ErrorCode errorCode) {
+                evt.setError(errorCode);
+                bus.publish(evt);
+            }
+        });
     }
 
     protected void changeStatus(PrimaryStorageStatus status) {
@@ -764,6 +798,14 @@ public abstract class PrimaryStorageBase extends AbstractPrimaryStorage {
             throw new OperationFailureException(errf.instantiateErrorCode(PrimaryStorageErrors.DETACH_ERROR, e.getMessage()));
         }
 
+        // if not, HA will allocate wrong host, rollback when API fail
+        SimpleQuery<PrimaryStorageClusterRefVO> q = dbf.createQuery(PrimaryStorageClusterRefVO.class);
+        q.add(PrimaryStorageClusterRefVO_.clusterUuid, Op.EQ, msg.getClusterUuid());
+        q.add(PrimaryStorageClusterRefVO_.primaryStorageUuid, Op.EQ, msg.getPrimaryStorageUuid());
+        List<PrimaryStorageClusterRefVO> refs = q.list();
+        dbf.removeCollection(refs, PrimaryStorageClusterRefVO.class);
+
+
         String issuer = PrimaryStorageVO.class.getSimpleName();
         List<PrimaryStorageDetachStruct> ctx = new ArrayList<>();
         PrimaryStorageDetachStruct struct = new PrimaryStorageDetachStruct();
@@ -780,6 +822,8 @@ public abstract class PrimaryStorageBase extends AbstractPrimaryStorage {
 
             @Override
             public void fail(ErrorCode errorCode) {
+                //has removed RefVO before, roll back
+                dbf.updateAndRefresh(refs.get(0));
                 evt.setError(errorCode);
                 bus.publish(evt);
             }
@@ -885,14 +929,6 @@ public abstract class PrimaryStorageBase extends AbstractPrimaryStorage {
 
     }
 
-    private List<String> getAllVmsUuid(String PrimaryStorageUuid) {
-        String sql = "select vm.uuid from VmInstanceVO vm, VolumeVO vol where vol.primaryStorageUuid =:uuid and vol.vmInstanceUuid = vm.uuid";
-        Query q = dbf.getEntityManager().createQuery(sql);
-        q.setParameter("uuid", PrimaryStorageUuid);
-        List<String> vmUUids= q.getResultList();
-        return vmUUids;
-    }
-
     protected void handle(APIChangePrimaryStorageStateMsg msg) {
         APIChangePrimaryStorageStateEvent evt = new APIChangePrimaryStorageStateEvent(msg.getId());
 
@@ -911,8 +947,9 @@ public abstract class PrimaryStorageBase extends AbstractPrimaryStorage {
         extpEmitter.beforeChange(self, event);
         if (PrimaryStorageStateEvent.maintain == event) {
             logger.warn(String.format("Primary Storage %s  will enter maintenance mode, ignore unknown status VMs", msg.getPrimaryStorageUuid()));
-            List<String> vmUuids = getAllVmsUuid(msg.getPrimaryStorageUuid());
-            //TODO: Add alert if some vms on disconnect host
+            List<String> vmUuids = SQL.New("select vm.uuid from VmInstanceVO vm, VolumeVO vol" +
+                    " where vol.primaryStorageUuid =:uuid and vol.vmInstanceUuid = vm.uuid group by vm.uuid", String.class)
+                    .param("uuid", self.getUuid()).list();
             if ( vmUuids.size() != 0 ) {
                 stopAllVms(vmUuids);
             }
@@ -921,7 +958,14 @@ public abstract class PrimaryStorageBase extends AbstractPrimaryStorage {
         self.setState(nextState);
         self = dbf.updateAndRefresh(self);
         extpEmitter.afterChange(self, event, currState);
+
+        PrimaryStorageCanonicalEvent.PrimaryStorageStateChangedData data = new PrimaryStorageCanonicalEvent.PrimaryStorageStateChangedData();
+        data.setInventory(PrimaryStorageInventory.valueOf(self));
+        data.setPrimaryStorageUuid(self.getUuid());
+        data.setOldState(currState);
+        data.setNewState(nextState);
         evt.setInventory(PrimaryStorageInventory.valueOf(self));
+        evtf.fire(PrimaryStorageCanonicalEvent.PRIMARY_STORAGE_STATE_CHANGED_PATH, data);
         bus.publish(evt);
     }
 
@@ -1024,4 +1068,24 @@ public abstract class PrimaryStorageBase extends AbstractPrimaryStorage {
         }).start();
     }
 
+    // don't attach any cluster
+    public boolean isUnmounted() {
+        long count = Q.New(PrimaryStorageClusterRefVO.class)
+                .eq(PrimaryStorageClusterRefVO_.primaryStorageUuid, this.self.getUuid()).count();
+
+        return count == 0;
+    }
+
+    @VmAttachVolumeValidatorMethod
+    static void vmAttachVolumeValidator(String vmUuid, String volumeUuid) {
+        PrimaryStorageState state = SQL.New("select pri.state from PrimaryStorageVO pri " +
+                "where pri.uuid = (select vol.primaryStorageUuid from VolumeVO vol where vol.uuid = :volUuid)", PrimaryStorageState.class)
+                .param("volUuid", volumeUuid)
+                .find();
+
+        if(state == PrimaryStorageState.Maintenance){
+            throw new OperationFailureException(
+                    operr("cannot attach volume[uuid:%s] whose primary storage is Maintenance", volumeUuid));
+        }
+    }
 }

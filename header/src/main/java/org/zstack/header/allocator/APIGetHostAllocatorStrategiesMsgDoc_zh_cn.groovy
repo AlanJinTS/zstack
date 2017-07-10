@@ -7,18 +7,18 @@ doc {
 
     category "host.allocator"
 
-    desc "获取物理机分配策略"
+    desc """获取物理机分配策略"""
 
     rest {
         request {
 			url "GET /v1/hosts/allocators/strategies"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIGetHostAllocatorStrategiesMsg.class
 
-            desc "获取物理机分配策略"
+            desc """获取物理机分配策略"""
             
 			params {
 

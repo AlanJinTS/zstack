@@ -1,22 +1,24 @@
 package org.zstack.header.image
 
+import org.zstack.header.image.APIAddImageEvent
+
 doc {
     title "添加镜像(AddImage)"
 
     category "image"
 
-    desc "向镜像服务器添加镜像"
+    desc """向镜像服务器添加镜像"""
 
     rest {
         request {
 			url "POST /v1/images"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIAddImageMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -132,7 +134,7 @@ doc {
 				}
 				column {
 					name "systemTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "系统标签"
 					location "body"
 					type "List"
@@ -142,7 +144,7 @@ doc {
 				}
 				column {
 					name "userTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "用户标签"
 					location "body"
 					type "List"

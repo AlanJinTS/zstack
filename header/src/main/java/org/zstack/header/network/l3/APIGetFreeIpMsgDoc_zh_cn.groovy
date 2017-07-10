@@ -7,26 +7,25 @@ doc {
 
     category "三层网络"
 
-    desc "获取空闲IP"
+    desc """获取空闲IP"""
 
     rest {
         request {
 			url "GET /v1/l3-networks/{l3NetworkUuid}/ip/free"
-
 			url "GET /v1/l3-networks/ip-ranges/{ipRangeUuid}/ip/free"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIGetFreeIpMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
 				column {
 					name "l3NetworkUuid"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "三层网络UUID"
 					location "query"
 					type "String"
@@ -36,7 +35,7 @@ doc {
 				}
 				column {
 					name "ipRangeUuid"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "IP段UUID"
 					location "query"
 					type "String"
@@ -46,7 +45,7 @@ doc {
 				}
 				column {
 					name "start"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "起始值"
 					location "query"
 					type "String"
@@ -56,7 +55,7 @@ doc {
 				}
 				column {
 					name "limit"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "数量限制"
 					location "query"
 					type "int"

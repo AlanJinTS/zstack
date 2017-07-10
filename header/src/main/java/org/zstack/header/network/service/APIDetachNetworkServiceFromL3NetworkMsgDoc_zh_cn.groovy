@@ -7,24 +7,24 @@ doc {
 
     category "三层网络"
 
-    desc "从三层网络卸载网络服务"
+    desc """从三层网络卸载网络服务"""
 
     rest {
         request {
 			url "DELETE /v1/l3-networks/{l3NetworkUuid}/network-services"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIDetachNetworkServiceFromL3NetworkMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
 				column {
 					name "l3NetworkUuid"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "三层网络UUID"
 					location "url"
 					type "String"
@@ -34,7 +34,7 @@ doc {
 				}
 				column {
 					name "networkServices"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "网络服务"
 					location "body"
 					type "Map"
@@ -44,8 +44,8 @@ doc {
 				}
 				column {
 					name "systemTags"
- 					enclosedIn ""
- 					desc "系统标签"
+					enclosedIn ""
+					desc "系统标签"
 					location "body"
 					type "List"
 					optional true

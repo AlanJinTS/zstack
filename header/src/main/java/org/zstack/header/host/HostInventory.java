@@ -116,12 +116,20 @@ public class HostInventory implements Serializable {
     private Long availableCpuCapacity;
 
     @Queryable(mappingClass = HostCapacityInventory.class,
+            joinColumn = @JoinColumn(name = "uuid", referencedColumnName = "cpuSockets"))
+    private Integer cpuSockets;
+
+    @Queryable(mappingClass = HostCapacityInventory.class,
             joinColumn = @JoinColumn(name = "uuid", referencedColumnName = "totalMemory"))
     private Long totalMemoryCapacity;
 
     @Queryable(mappingClass = HostCapacityInventory.class,
             joinColumn = @JoinColumn(name = "uuid", referencedColumnName = "availableMemory"))
     private Long availableMemoryCapacity;
+
+    @Queryable(mappingClass = HostCapacityInventory.class,
+            joinColumn = @JoinColumn(name = "uuid", referencedColumnName = "cpuNum"))
+    private Integer cpuNum;
 
     /**
      * @desc the time this resource gets created
@@ -149,10 +157,20 @@ public class HostInventory implements Serializable {
             this.setAvailableCpuCapacity(vo.getCapacity().getAvailableCpu());
             this.setTotalMemoryCapacity(vo.getCapacity().getTotalMemory());
             this.setAvailableMemoryCapacity(vo.getCapacity().getAvailableMemory());
+            this.setCpuSockets(vo.getCapacity().getCpuSockets());
+            this.setCpuNum(vo.getCapacity().getCpuNum());
         }
     }
 
     public HostInventory() {
+    }
+
+    public Integer getCpuNum() {
+        return cpuNum;
+    }
+
+    public void setCpuNum(Integer cpuNum) {
+        this.cpuNum = cpuNum;
     }
 
     public static HostInventory valueOf(HostVO vo) {
@@ -177,6 +195,14 @@ public class HostInventory implements Serializable {
 
     public Long getAvailableCpuCapacity() {
         return availableCpuCapacity;
+    }
+
+    public Integer getCpuSockets() {
+        return cpuSockets;
+    }
+
+    public void setCpuSockets(Integer cpuSockets) {
+        this.cpuSockets = cpuSockets;
     }
 
     public void setAvailableCpuCapacity(Long availableCpuCapacity) {

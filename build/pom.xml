@@ -4,7 +4,7 @@
     <parent>
         <artifactId>zstack</artifactId>
         <groupId>org.zstack</groupId>
-        <version>1.10.0</version>
+        <version>2.0.0</version>
         <relativePath>..</relativePath>
     </parent>
     <artifactId>build</artifactId>
@@ -48,6 +48,7 @@
                                         <exclude>springConfigXml/ceph.xml</exclude>
                                         <exclude>springConfigXml/fusionstor.xml</exclude>
                                         <exclude>springConfigXml/tag.xml</exclude>
+                                        <exclude>serviceConfig/metadata.xml</exclude>
                                     </excludes>
                                 </resource>
                                 <resource>
@@ -244,6 +245,11 @@
                 <dependency>
                     <groupId>org.zstack</groupId>
                     <artifactId>hybrid</artifactId>
+                    <version>${project.version}</version>
+                </dependency>
+                <dependency>
+                    <groupId>org.zstack</groupId>
+                    <artifactId>sdk</artifactId>
                     <version>${project.version}</version>
                 </dependency>
             </dependencies>
@@ -462,6 +468,11 @@
         <dependency>
             <groupId>org.zstack</groupId>
             <artifactId>vxlan</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.zstack</groupId>
+            <artifactId>sdk</artifactId>
             <version>${project.version}</version>
         </dependency>
     </dependencies>

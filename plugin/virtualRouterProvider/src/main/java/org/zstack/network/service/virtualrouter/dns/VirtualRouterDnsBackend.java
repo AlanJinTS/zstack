@@ -58,7 +58,7 @@ public class VirtualRouterDnsBackend extends AbstractVirtualRouterBackend implem
         }
 
         SetDnsCmd cmd = new SetDnsCmd();
-        cmd.setDns(CollectionUtils.transformToList(dns, new Function<DnsInfo, String>() {
+        cmd.setDns(CollectionUtils.transformToList(l3.getDns(), new Function<DnsInfo, String>() {
             @Override
             public DnsInfo call(String arg) {
                 DnsInfo info = new DnsInfo();
@@ -255,7 +255,7 @@ public class VirtualRouterDnsBackend extends AbstractVirtualRouterBackend implem
                 if (!reply.isSuccess()) {
                     logger.warn(String.format("virtual router[name: %s, uuid: %s] failed to remove dns%s, because %s",
                             vr.getName(), vr.getUuid(), JSONObjectUtil.toJsonString(info), reply.getError()));
-                    //TODO: schedule job to clean up
+                    // TODO GC
                 } else {
                     VirtualRouterAsyncHttpCallReply re = reply.castReply();
                     RemoveDnsRsp ret = re.toResponse(RemoveDnsRsp.class);
@@ -265,7 +265,7 @@ public class VirtualRouterDnsBackend extends AbstractVirtualRouterBackend implem
                     } else {
                         logger.warn(String.format("virtual router[name: %s, uuid: %s] failed to remove dns%s, because %s",
                                 vr.getName(), vr.getUuid(), JSONObjectUtil.toJsonString(info), ret.getError()));
-                        //TODO: schedule job to clean up
+                        //TODO GC
                     }
                 }
 

@@ -7,18 +7,18 @@ doc {
 
     category "三层网络"
 
-    desc "检查IP可用性"
+    desc """检查IP可用性"""
 
     rest {
         request {
 			url "GET /v1/l3-networks/{l3NetworkUuid}/ip/{ip}/availability"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APICheckIpAvailabilityMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -44,8 +44,8 @@ doc {
 				}
 				column {
 					name "systemTags"
- 					enclosedIn ""
- 					desc "系统标签"
+					enclosedIn ""
+					desc "系统标签"
 					location "query"
 					type "List"
 					optional true

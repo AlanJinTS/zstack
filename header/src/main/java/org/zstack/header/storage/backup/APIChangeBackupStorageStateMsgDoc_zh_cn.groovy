@@ -1,22 +1,24 @@
 package org.zstack.header.storage.backup
 
+import org.zstack.header.storage.backup.APIChangeBackupStorageStateEvent
+
 doc {
     title "更改镜像服务器可用状态(ChangeBackupStorageState)"
 
     category "storage.backup"
 
-    desc "更改镜像服务器的可用状态"
+    desc """更改镜像服务器的可用状态"""
 
     rest {
         request {
 			url "PUT /v1/backup-storage/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIChangeBackupStorageStateMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -42,7 +44,7 @@ doc {
 				}
 				column {
 					name "systemTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "系统标签"
 					location "body"
 					type "List"
@@ -52,7 +54,7 @@ doc {
 				}
 				column {
 					name "userTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "用户标签"
 					location "body"
 					type "List"

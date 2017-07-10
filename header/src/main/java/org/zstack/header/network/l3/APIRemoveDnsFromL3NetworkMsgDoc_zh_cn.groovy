@@ -7,18 +7,18 @@ doc {
 
     category "三层网络"
 
-    desc "从三层网络移除DNS"
+    desc """从三层网络移除DNS"""
 
     rest {
         request {
 			url "DELETE /v1/l3-networks/{l3NetworkUuid}/dns/{dns}"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIRemoveDnsFromL3NetworkMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

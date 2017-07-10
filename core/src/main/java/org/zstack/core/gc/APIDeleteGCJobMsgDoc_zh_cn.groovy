@@ -7,18 +7,18 @@ doc {
 
     category "gc"
 
-    desc "在这里填写API描述"
+    desc """在这里填写API描述"""
 
     rest {
         request {
 			url "DELETE /v1/gc-jobs/{uuid}"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIDeleteGCJobMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

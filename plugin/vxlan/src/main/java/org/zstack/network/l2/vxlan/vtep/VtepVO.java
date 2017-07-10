@@ -5,23 +5,20 @@ import org.zstack.header.host.HostEO;
 import org.zstack.header.network.l2.L2NetworkEO;
 import org.zstack.header.tag.AutoDeleteTag;
 import org.zstack.header.vo.ForeignKey;
+import org.zstack.header.vo.ResourceVO;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.Table;
+import java.sql.Timestamp;
 
 /**
  * Created by weiwang on 02/03/2017.
  */
 @Entity
 @Table
-@AutoDeleteTag
-public class VtepVO {
-    @Id
-    @Column
-    private String uuid;
-
+public class VtepVO extends ResourceVO {
     @Column
     @ForeignKey(parentEntityClass = HostEO.class, onDeleteAction = ForeignKey.ReferenceOption.CASCADE)
     private String hostUuid;
@@ -43,12 +40,26 @@ public class VtepVO {
     @Column
     private String type;
 
-    public String getUuid() {
-        return uuid;
+    @Column
+    private Timestamp createDate;
+
+    @Column
+    private Timestamp lastOpDate;
+
+    public Timestamp getCreateDate() {
+        return createDate;
     }
 
-    public void setUuid(String uuid) {
-        this.uuid = uuid;
+    public void setCreateDate(Timestamp createDate) {
+        this.createDate = createDate;
+    }
+
+    public Timestamp getLastOpDate() {
+        return lastOpDate;
+    }
+
+    public void setLastOpDate(Timestamp lastOpDate) {
+        this.lastOpDate = lastOpDate;
     }
 
     public String getHostUuid() {

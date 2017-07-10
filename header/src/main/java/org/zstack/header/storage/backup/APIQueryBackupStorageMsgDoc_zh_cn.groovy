@@ -1,5 +1,7 @@
 package org.zstack.header.storage.backup
 
+import org.zstack.header.storage.backup.APIQueryBackupStorageReply
+import org.zstack.header.query.APIQueryMessage
 import org.zstack.header.query.APIQueryMessage
 
 doc {
@@ -7,18 +9,19 @@ doc {
 
     category "storage.backup"
 
-    desc "查询镜像服务器"
+    desc """查询镜像服务器"""
 
     rest {
         request {
 			url "GET /v1/backup-storage"
+			url "GET /v1/backup-storage/{uuid}"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIQueryBackupStorageMsg.class
 
-            desc ""
+            desc """"""
             
 			params APIQueryMessage.class
         }

@@ -1,22 +1,24 @@
 package org.zstack.header.storage.primary
 
+import org.zstack.header.storage.primary.APIReconnectPrimaryStorageEvent
+
 doc {
     title "重连主存储(ReconnectPrimaryStorage)"
 
     category "storage.primary"
 
-    desc "重连主存储"
+    desc """重连主存储"""
 
     rest {
         request {
 			url "PUT /v1/primary-storage/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIReconnectPrimaryStorageMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -32,7 +34,7 @@ doc {
 				}
 				column {
 					name "systemTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "系统标签"
 					location "body"
 					type "List"
@@ -42,7 +44,7 @@ doc {
 				}
 				column {
 					name "userTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "用户标签"
 					location "body"
 					type "List"

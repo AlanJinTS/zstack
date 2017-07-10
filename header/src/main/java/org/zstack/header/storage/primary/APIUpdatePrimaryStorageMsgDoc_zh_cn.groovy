@@ -1,22 +1,24 @@
 package org.zstack.header.storage.primary
 
+import org.zstack.header.storage.primary.APIUpdatePrimaryStorageEvent
+
 doc {
     title "根系更新主存储信息(UpdatePrimaryStorage)"
 
     category "storage.primary"
 
-    desc "更新主存储信息"
+    desc """更新主存储信息"""
 
     rest {
         request {
 			url "PUT /v1/primary-storage/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIUpdatePrimaryStorageMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -62,8 +64,8 @@ doc {
 				}
 				column {
 					name "systemTags"
- 					enclosedIn "params"
- 					desc "系统标签"
+					enclosedIn ""
+					desc "系统标签"
 					location "body"
 					type "List"
 					optional true
@@ -72,7 +74,7 @@ doc {
 				}
 				column {
 					name "userTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "用户标签"
 					location "body"
 					type "List"

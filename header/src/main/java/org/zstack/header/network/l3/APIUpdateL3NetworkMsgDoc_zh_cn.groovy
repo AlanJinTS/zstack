@@ -7,18 +7,18 @@ doc {
 
     category "三层网络"
 
-    desc "更新三层网络"
+    desc """更新三层网络"""
 
     rest {
         request {
 			url "PUT /v1/l3-networks/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIUpdateL3NetworkMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

@@ -7,19 +7,19 @@ doc {
 
     category "securityGroup"
 
-    desc "用户可以使用DeleteVmNicFromSecurityGroup来从安全组删除虚拟机网卡, 这个命令是异步执行的, 在它返回后可能规则仍然没有对所有虚拟机网卡生效"
+    desc """用户可以使用DeleteVmNicFromSecurityGroup来从安全组删除虚拟机网卡, 这个命令是异步执行的, 在它返回后可能规则仍然没有对所有虚拟机网卡生效"""
 
     rest {
         request {
 			url "DELETE /v1/security-groups/{securityGroupUuid}/vm-instances/nics"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIDeleteVmNicFromSecurityGroupMsg.class
 
-			desc "用户可以使用DeleteVmNicFromSecurityGroup来从安全组删除虚拟机网卡, 这个命令是异步执行的, 在它返回后可能规则仍然没有对所有虚拟机网卡生效"
-
+            desc """用户可以使用DeleteVmNicFromSecurityGroup来从安全组删除虚拟机网卡, 这个命令是异步执行的, 在它返回后可能规则仍然没有对所有虚拟机网卡生效"""
+            
 			params {
 
 				column {

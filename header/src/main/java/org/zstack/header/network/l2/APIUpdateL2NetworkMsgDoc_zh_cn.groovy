@@ -7,24 +7,24 @@ doc {
 
     category "二层网络"
 
-    desc "更新二层网络"
+    desc """更新二层网络"""
 
     rest {
         request {
 			url "PUT /v1/l2-networks/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIUpdateL2NetworkMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
 				column {
 					name "uuid"
-					enclosedIn "params"
+					enclosedIn "updateL2Network"
 					desc "资源的UUID，唯一标示该资源"
 					location "url"
 					type "String"
@@ -34,7 +34,7 @@ doc {
 				}
 				column {
 					name "name"
-					enclosedIn "params"
+					enclosedIn "updateL2Network"
 					desc "普通二层网络名称"
 					location "body"
 					type "String"
@@ -44,7 +44,7 @@ doc {
 				}
 				column {
 					name "description"
-					enclosedIn "params"
+					enclosedIn "updateL2Network"
 					desc "普通二层网络的详细描述"
 					location "body"
 					type "String"
@@ -54,8 +54,8 @@ doc {
 				}
 				column {
 					name "systemTags"
- 					enclosedIn ""
- 					desc "系统标签"
+					enclosedIn ""
+					desc "系统标签"
 					location "body"
 					type "List"
 					optional true

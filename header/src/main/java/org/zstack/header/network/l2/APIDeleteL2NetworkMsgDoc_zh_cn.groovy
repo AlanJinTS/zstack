@@ -7,18 +7,18 @@ doc {
 
     category "二层网络"
 
-    desc "删除二层网络"
+    desc """删除二层网络"""
 
     rest {
         request {
 			url "DELETE /v1/l2-networks/{uuid}"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIDeleteL2NetworkMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -34,8 +34,8 @@ doc {
 				}
 				column {
 					name "deleteMode"
- 					enclosedIn ""
- 					desc "删除模式"
+					enclosedIn ""
+					desc "删除模式"
 					location "body"
 					type "String"
 					optional true

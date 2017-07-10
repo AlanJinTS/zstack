@@ -13,6 +13,8 @@ import org.zstack.header.allocator.HostCapacityOverProvisioningManager;
 import org.zstack.header.allocator.HostReservedCapacityExtensionPoint;
 import org.zstack.header.allocator.ReservedHostCapacity;
 import org.zstack.header.exception.CloudRuntimeException;
+import org.zstack.header.host.HostState;
+import org.zstack.header.host.HostStatus;
 import org.zstack.header.host.HostVO;
 import org.zstack.header.host.HostVO_;
 import org.zstack.utils.CollectionUtils;
@@ -94,7 +96,14 @@ public class HostCapacityReserveManagerImpl implements HostCapacityReserveManage
             SimpleQuery<HostVO> clusterq = dbf.createQuery(HostVO.class);
             clusterq.select(HostVO_.uuid, HostVO_.clusterUuid);
             clusterq.add(HostVO_.uuid, Op.IN, hostUuids);
+            clusterq.add(HostVO_.state,Op.EQ, HostState.Enabled);
+            clusterq.add(HostVO_.status,Op.EQ, HostStatus.Connected);
             List<Tuple> clusterTuple = clusterq.listTuple();
+
+            if (clusterTuple.isEmpty()) {
+                return;
+            }
+
             Map<String, List<String>> clusterHostUuidMap = new HashMap<>(clusterTuple.size());
             List<String> clusterUuids = new ArrayList<>(clusterTuple.size());
             for (Tuple t : clusterTuple) {
@@ -146,9 +155,17 @@ public class HostCapacityReserveManagerImpl implements HostCapacityReserveManage
             SimpleQuery<HostVO> zoneq = dbf.createQuery(HostVO.class);
             zoneq.select(HostVO_.uuid, HostVO_.zoneUuid);
             zoneq.add(HostVO_.uuid, Op.IN, hostUuids);
+            zoneq.add(HostVO_.state,Op.EQ, HostState.Enabled);
+            zoneq.add(HostVO_.status,Op.EQ, HostStatus.Connected);
             List<Tuple> zoneTuples = zoneq.listTuple();
+
+            if (zoneTuples.isEmpty()) {
+                return;
+            }
+
             List<String> zoneUuids = new ArrayList<>();
             Map<String, List<String>> zoneHostUuidMap = new HashMap<>();
+
             for (Tuple t : zoneTuples) {
                 String huuid = t.get(0, String.class);
                 String zuuid = t.get(1, String.class);
@@ -195,6 +212,8 @@ public class HostCapacityReserveManagerImpl implements HostCapacityReserveManage
             SimpleQuery<HostVO> hq = dbf.createQuery(HostVO.class);
             hq.select(HostVO_.uuid, HostVO_.hypervisorType);
             hq.add(HostVO_.uuid, Op.IN, hostUuids);
+            hq.add(HostVO_.state,Op.EQ, HostState.Enabled);
+            hq.add(HostVO_.status,Op.EQ, HostStatus.Connected);
             List<Tuple> tuples = hq.listTuple();
 
             for (Tuple t : tuples) {
@@ -284,7 +303,7 @@ public class HostCapacityReserveManagerImpl implements HostCapacityReserveManage
         List<HostVO> ret = new ArrayList<>(candidates.size());
         for (HostVO hvo : candidates) {
             ReservedHostCapacity hc = reserves.get(hvo.getUuid());
-            if (hvo.getCapacity().getAvailableMemory() - hc.getReservedMemoryCapacity() > ratioMgr.calculateMemoryByRatio(hvo.getUuid(), requiredMemory)) {
+            if (hvo.getCapacity().getAvailableMemory() - hc.getReservedMemoryCapacity() >= ratioMgr.calculateMemoryByRatio(hvo.getUuid(), requiredMemory)) {
                 ret.add(hvo);
             } else {
                 if (logger.isTraceEnabled()) {

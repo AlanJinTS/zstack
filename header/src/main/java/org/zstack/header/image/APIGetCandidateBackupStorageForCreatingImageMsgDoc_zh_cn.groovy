@@ -7,20 +7,19 @@ doc {
 
     category "host.allocator"
 
-    desc "获取创建镜像的备份存储候选"
+    desc """获取创建镜像的备份存储候选"""
 
     rest {
         request {
 			url "GET /v1/images/volumes/{volumeUuid}/candidate-backup-storage"
-
 			url "GET /v1/images/volume-snapshots/{volumeSnapshotUuid}/candidate-backup-storage"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIGetCandidateBackupStorageForCreatingImageMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

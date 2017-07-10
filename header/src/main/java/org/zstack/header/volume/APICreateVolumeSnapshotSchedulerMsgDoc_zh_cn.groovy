@@ -5,17 +5,18 @@ doc {
 
     category "snapshot.volume"
 
-    desc "创建快照的定时任务"
+    desc """创建快照的定时任务"""
 
     rest {
         request {
 			url "POST /v1/volumes/{volumeUuid}/schedulers/creating-volume-snapshots"
 
-            header (OAuth: 'the-session-uuid')
+			header (Authorization: 'OAuth the-session-uuid')
 
-            clz APICreateVolumeSnapshotSchedulerMsg.class
 
-            desc ""
+            clz APICreateVolumeSnapshotSchedulerJobMsg.class
+
+            desc """"""
             
 			params {
 
@@ -23,7 +24,7 @@ doc {
 					name "volumeUuid"
 					enclosedIn "params"
 					desc "云盘UUID"
-					location "body"
+					location "url"
 					type "String"
 					optional false
 					since "0.6"
@@ -102,7 +103,7 @@ doc {
 				column {
 					name "startTime"
 					enclosedIn "params"
-                    desc "定时任务启动时间，必须遵循unix timestamp格式，0为从立刻开始"
+					desc "定时任务启动时间，必须遵循unix timestamp格式，0为从立刻开始"
 					location "body"
 					type "Long"
 					optional true
@@ -153,7 +154,7 @@ doc {
         }
 
         response {
-            clz APICreateVolumeSnapshotSchedulerEvent.class
+            clz APICreateVolumeSnapshotSchedulerJobEvent.class
         }
     }
 }

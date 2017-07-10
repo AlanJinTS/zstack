@@ -19,7 +19,6 @@ import org.zstack.header.rest.RestRequest;
         path = "/images/{uuid}/actions",
         isAction = true,
         responseClass = APIChangeImageStateEvent.class,
-        parameterName = "params",
         method = HttpMethod.PUT
 )
 public class APIChangeImageStateMsg extends APIMessage implements ImageMessage {
@@ -53,7 +52,7 @@ public class APIChangeImageStateMsg extends APIMessage implements ImageMessage {
         APIChangeImageStateMsg msg = new APIChangeImageStateMsg();
 
         msg.setUuid(uuid());
-        msg.setStateEvent(ImageState.Disabled.toString());
+        msg.setStateEvent(ImageStateEvent.disable.toString());
 
         return msg;
     }

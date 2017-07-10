@@ -7,18 +7,18 @@ doc {
 
     category "二层网络"
 
-    desc "创建普通二层网络"
+    desc """创建普通二层网络"""
 
     rest {
         request {
 			url "POST /v1/l2-networks/no-vlan"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APICreateL2NoVlanNetworkMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -84,8 +84,8 @@ doc {
 				}
 				column {
 					name "systemTags"
- 					enclosedIn ""
- 					desc "系统标签"
+					enclosedIn ""
+					desc "系统标签"
 					location "body"
 					type "List"
 					optional true

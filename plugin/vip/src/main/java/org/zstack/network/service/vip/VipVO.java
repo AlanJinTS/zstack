@@ -2,22 +2,21 @@ package org.zstack.network.service.vip;
 
 import org.zstack.header.network.l3.IpRangeEO;
 import org.zstack.header.network.l3.L3NetworkEO;
+import org.zstack.header.network.l3.UsedIpVO;
 import org.zstack.header.tag.AutoDeleteTag;
+import org.zstack.header.vo.BaseResource;
 import org.zstack.header.vo.ForeignKey;
 import org.zstack.header.vo.ForeignKey.ReferenceOption;
 import org.zstack.header.vo.Index;
+import org.zstack.header.vo.ResourceVO;
 
 import javax.persistence.*;
 import java.sql.Timestamp;
 
 @Entity
 @Table
-@AutoDeleteTag
-public class VipVO {
-    @Id
-    @Column
-    private String uuid;
-
+@BaseResource
+public class VipVO extends ResourceVO {
     @Column
     @Index
     private String  name;
@@ -101,14 +100,6 @@ public class VipVO {
 
     public void setServiceProvider(String serviceProvider) {
         this.serviceProvider = serviceProvider;
-    }
-
-    public String getUuid() {
-        return uuid;
-    }
-
-    public void setUuid(String uuid) {
-        this.uuid = uuid;
     }
 
     public String getUseFor() {

@@ -7,24 +7,24 @@ doc {
 
     category "other"
 
-    desc "在这里填写API描述"
+    desc """在这里填写API描述"""
 
     rest {
         request {
 			url "GET /v1/management-nodes/ready"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIIsReadyToGoMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
 				column {
 					name "managementNodeId"
-					enclosedIn "params"
+					enclosedIn ""
 					desc ""
 					location "query"
 					type "String"

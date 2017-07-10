@@ -24,11 +24,13 @@ import org.zstack.header.exception.CloudRuntimeException;
 import org.zstack.header.image.*;
 import org.zstack.header.message.APIMessage;
 import org.zstack.header.message.Message;
+import org.zstack.header.rest.JsonAsyncRESTCallback;
 import org.zstack.header.rest.RESTFacade;
 import org.zstack.header.storage.backup.*;
 import org.zstack.storage.backup.BackupStorageBase;
 import org.zstack.storage.ceph.*;
 import org.zstack.storage.ceph.CephMonBase.PingResult;
+import org.zstack.storage.ceph.primary.CephPrimaryStorageBase;
 import org.zstack.storage.ceph.primary.CephPrimaryStorageVO;
 import org.zstack.storage.ceph.primary.CephPrimaryStorageVO_;
 import org.zstack.utils.CollectionUtils;
@@ -46,6 +48,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.zstack.utils.CollectionDSL.list;
+import static org.zstack.utils.URLBuilder.buildUrl;
 
 /**
  * Created by frank on 7/27/2015.
@@ -159,6 +162,22 @@ public class CephBackupStorageBase extends BackupStorageBase {
         }
     }
 
+    public static class CheckCmd extends AgentCommand {
+        List<Pool> pools;
+
+        public List<Pool> getPools() {
+            return pools;
+        }
+
+        public void setPools(List<Pool> pools) {
+            this.pools = pools;
+        }
+    }
+
+    public static class CheckRsp extends AgentResponse {
+
+    }
+
     @ApiTimeout(apiClasses = {APIAddImageMsg.class})
     public static class DownloadCmd extends AgentCommand implements HasThreadContext {
         String url;
@@ -240,6 +259,14 @@ public class CephBackupStorageBase extends BackupStorageBase {
 
     public static class PingRsp extends AgentResponse {
 
+    }
+
+    public static class GetLocalFileSizeCmd extends AgentCommand {
+        public String path ;
+    }
+
+    public static class GetLocalFileSizeRsp extends AgentResponse {
+        public long size;
     }
 
     public static class GetImageSizeCmd extends AgentCommand {
@@ -413,6 +440,8 @@ public class CephBackupStorageBase extends BackupStorageBase {
     public static final String DUMP_IMAGE_METADATA_TO_FILE = "/ceph/backupstorage/dumpimagemetadatatofile";
     public static final String GET_IMAGES_METADATA = "/ceph/backupstorage/getimagesmetadata";
     public static final String DELETE_IMAGES_METADATA = "/ceph/backupstorage/deleteimagesmetadata";
+    public static final String CHECK_POOL_PATH = "/ceph/backupstorage/checkpool";
+    public static final String GET_LOCAL_FILE_SIZE = "/ceph/backupstorage/getlocalfilesize";
 
     protected String makeImageInstallPath(String imageUuid) {
         return String.format("ceph://%s/%s", getSelf().getPoolName(), imageUuid);
@@ -710,7 +739,7 @@ public class CephBackupStorageBase extends BackupStorageBase {
     protected void handle(final DeleteBitsOnBackupStorageMsg msg) {
         final DeleteBitsOnBackupStorageReply reply = new DeleteBitsOnBackupStorageReply();
         if (!canDelete(msg.getInstallPath())) {
-            //TODO: the image is still referred, need to cleanup
+            //TODO: GC, the image is still referred, need to cleanup
             bus.reply(msg, reply);
             return;
         }
@@ -721,7 +750,7 @@ public class CephBackupStorageBase extends BackupStorageBase {
         httpCall(DELETE_IMAGE_PATH, cmd, DeleteRsp.class, new ReturnValueCompletion<DeleteRsp>(msg) {
             @Override
             public void fail(ErrorCode err) {
-                //TODO
+                //TODO GC, do not reply error
                 reply.setError(err);
                 bus.reply(msg, reply);
             }
@@ -773,6 +802,26 @@ public class CephBackupStorageBase extends BackupStorageBase {
             @Override
             public void fail(ErrorCode errorCode) {
                 reply.setError(errorCode);
+                bus.reply(msg, reply);
+            }
+        });
+    }
+
+    @Override
+    protected void handle(GetLocalFileSizeOnBackupStorageMsg msg) {
+        GetLocalFileSizeOnBackupStorageReply reply = new GetLocalFileSizeOnBackupStorageReply();
+        GetLocalFileSizeCmd cmd = new GetLocalFileSizeCmd();
+        cmd.path = msg.getUrl();
+        httpCall(GET_LOCAL_FILE_SIZE, cmd, GetLocalFileSizeRsp.class, new ReturnValueCompletion<GetLocalFileSizeRsp>(msg) {
+            @Override
+            public void fail(ErrorCode err) {
+                reply.setError(err);
+                bus.reply(msg, reply);
+            }
+
+            @Override
+            public void success(GetLocalFileSizeRsp ret) {
+                reply.setSize(ret.size);
                 bus.reply(msg, reply);
             }
         });
@@ -923,14 +972,48 @@ public class CephBackupStorageBase extends BackupStorageBase {
                 });
 
                 flow(new NoRollbackFlow() {
+                    String _name_ = "check-pool";
+
+                    @Override
+                    public void run(FlowTrigger trigger, Map data) {
+
+                        Pool p = new Pool();
+                        p.name = getSelf().getPoolName();
+                        p.predefined = CephSystemTags.PREDEFINED_BACKUP_STORAGE_POOL.hasTag(self.getUuid());
+
+                        if(!newAdded){
+                            CheckCmd check = new CheckCmd();
+                            check.setPools(list(p));
+                            httpCall(CHECK_POOL_PATH, check, CheckRsp.class, new ReturnValueCompletion<CheckRsp>(trigger) {
+                                @Override
+                                public void fail(ErrorCode err) {
+                                    trigger.fail(err);
+                                }
+
+                                @Override
+                                public void success(CheckRsp ret) {
+                                    trigger.next();
+                                }
+                            });
+                        } else {
+                            trigger.next();
+                        }
+
+                    }
+                });
+
+                flow(new NoRollbackFlow() {
                     String __name__ = "init";
 
                     @Override
                     public void run(final FlowTrigger trigger, Map data) {
-                        InitCmd cmd = new InitCmd();
+
                         Pool p = new Pool();
                         p.name = getSelf().getPoolName();
                         p.predefined = CephSystemTags.PREDEFINED_BACKUP_STORAGE_POOL.hasTag(self.getUuid());
+
+
+                        InitCmd cmd = new InitCmd();
                         cmd.pools = list(p);
 
                         httpCall(INIT_PATH, cmd, InitRsp.class, new ReturnValueCompletion<InitRsp>(trigger) {

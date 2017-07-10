@@ -37,7 +37,6 @@ import org.zstack.header.rest.RestRequest;
 @RestRequest(
         path = "/primary-storage/{uuid}/actions",
         isAction = true,
-        parameterName = "params",
         responseClass = APIChangePrimaryStorageStateEvent.class,
         method = HttpMethod.PUT
 )
@@ -90,7 +89,7 @@ public class APIChangePrimaryStorageStateMsg extends APIMessage implements Prima
         APIChangePrimaryStorageStateMsg msg = new APIChangePrimaryStorageStateMsg();
 
         msg.setUuid(uuid());
-        msg.setStateEvent(PrimaryStorageState.Disabled.toString());
+        msg.setStateEvent(PrimaryStorageStateEvent.disable.toString());
 
         return msg;
     }

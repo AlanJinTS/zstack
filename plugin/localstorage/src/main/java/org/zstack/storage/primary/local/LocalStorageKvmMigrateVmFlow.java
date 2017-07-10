@@ -8,6 +8,8 @@ import org.zstack.core.cloudbus.CloudBus;
 import org.zstack.core.cloudbus.CloudBusCallBack;
 import org.zstack.core.cloudbus.CloudBusListCallBack;
 import org.zstack.core.db.DatabaseFacade;
+import org.zstack.core.db.Q;
+import org.zstack.core.db.SQLBatch;
 import org.zstack.core.db.SimpleQuery;
 import org.zstack.core.db.SimpleQuery.Op;
 import org.zstack.core.errorcode.ErrorFacade;
@@ -31,9 +33,7 @@ import org.zstack.header.image.ImageInventory;
 import org.zstack.header.image.ImageStatus;
 import org.zstack.header.image.ImageVO;
 import org.zstack.header.message.MessageReply;
-import org.zstack.header.storage.primary.DownloadImageToPrimaryStorageCacheMsg;
-import org.zstack.header.storage.primary.DownloadImageToPrimaryStorageCacheReply;
-import org.zstack.header.storage.primary.PrimaryStorageConstant;
+import org.zstack.header.storage.primary.*;
 import org.zstack.header.storage.snapshot.VolumeSnapshotInventory;
 import org.zstack.header.storage.snapshot.VolumeSnapshotTree;
 import org.zstack.header.storage.snapshot.VolumeSnapshotVO;
@@ -52,8 +52,6 @@ import org.zstack.utils.Utils;
 import org.zstack.utils.function.Function;
 import org.zstack.utils.logging.CLogger;
 
-import static org.zstack.core.Platform.operr;
-
 import javax.persistence.TypedQuery;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -61,6 +59,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 
+import static org.zstack.core.Platform.operr;
 import static org.zstack.utils.CollectionDSL.list;
 
 /**
@@ -421,7 +420,7 @@ public class LocalStorageKvmMigrateVmFlow extends NoRollbackFlow {
                                     @Override
                                     public void run(MessageReply reply) {
                                         if (!reply.isSuccess()) {
-                                            //TODO
+                                            //TODO add GC
                                             logger.warn(String.format("failed to delete %s on the host[uuid:%s] of local storage[uuid:%s], %s",
                                                     backingImage.path, dstHostUuid, ref.getPrimaryStorageUuid(), reply.getError()));
                                         }
@@ -596,24 +595,43 @@ public class LocalStorageKvmMigrateVmFlow extends NoRollbackFlow {
                 flow(new NoRollbackFlow() {
                     String __name__ = "update-volumes-info-in-db-to-dst-host";
 
+                    private void updateVolumesInfo(final List<String> volUuids) {
+                        new SQLBatch() {
+                            @Override
+                            protected void scripts() {
+                                List<LocalStorageResourceRefVO> oldRefs = sql(
+                                        "select ref" +
+                                                " from LocalStorageResourceRefVO ref" +
+                                                " where ref.resourceUuid in (:resourceUuids)" +
+                                                " and ref.resourceType = :resourceType",
+                                        LocalStorageResourceRefVO.class)
+                                        .param("resourceUuids", volUuids)
+                                        .param("resourceType", VolumeVO.class.getSimpleName())
+                                        .list();
+
+                                for (final LocalStorageResourceRefVO ref : oldRefs) {
+                                    LocalStorageResourceRefVO newRef = new LocalStorageResourceRefVO();
+                                    newRef.setHostUuid(dstHostUuid);
+                                    newRef.setResourceUuid(ref.getResourceUuid());
+                                    newRef.setPrimaryStorageUuid(ref.getPrimaryStorageUuid());
+                                    newRef.setResourceType(ref.getResourceType());
+                                    newRef.setSize(ref.getSize());
+                                    newRef.setCreateDate(ref.getCreateDate());
+                                    dbf.getEntityManager().persist(newRef);
+                                    dbf.getEntityManager().remove(ref);
+                                }
+                            }
+                        }.execute();
+                    }
+
                     @Override
                     public void run(FlowTrigger trigger, Map data) {
-                        List<String> volUuids = CollectionUtils.transformToList(volumesOnLocalStorage, new Function<String, VolumeInventory>() {
-                            @Override
-                            public String call(VolumeInventory arg) {
-                                return arg.getUuid();
-                            }
-                        });
+                        List<String> volUuids = CollectionUtils.transformToList(volumesOnLocalStorage,
+                                (VolumeInventory vol) -> vol.getUuid()
+                        );
 
-                        SimpleQuery<LocalStorageResourceRefVO> q = dbf.createQuery(LocalStorageResourceRefVO.class);
-                        q.add(LocalStorageResourceRefVO_.resourceUuid, Op.IN, volUuids);
-                        q.add(LocalStorageResourceRefVO_.resourceType, Op.EQ, VolumeVO.class.getSimpleName());
-                        List<LocalStorageResourceRefVO> refs = q.list();
-                        for (LocalStorageResourceRefVO ref : refs) {
-                            ref.setHostUuid(dstHostUuid);
-                        }
+                        updateVolumesInfo(volUuids);
 
-                        dbf.updateCollection(refs);
                         trigger.next();
                     }
                 });
@@ -622,24 +640,43 @@ public class LocalStorageKvmMigrateVmFlow extends NoRollbackFlow {
                     flow(new NoRollbackFlow() {
                         String __name__ = "update-snapshots-info-in-db-to-dst-host";
 
+                        private void updateSnapshotsInfo(final List<String> spUuids) {
+                            new SQLBatch() {
+                                @Override
+                                protected void scripts() {
+                                    List<LocalStorageResourceRefVO> oldRefs = sql(
+                                            "select ref" +
+                                                    " from LocalStorageResourceRefVO ref" +
+                                                    " where ref.resourceUuid in (:resourceUuids)" +
+                                                    " and ref.resourceType = :resourceType",
+                                            LocalStorageResourceRefVO.class)
+                                            .param("resourceUuids", spUuids)
+                                            .param("resourceType", VolumeSnapshotVO.class.getSimpleName())
+                                            .list();
+
+                                    for (final LocalStorageResourceRefVO ref : oldRefs) {
+                                        LocalStorageResourceRefVO newRef = new LocalStorageResourceRefVO();
+                                        newRef.setHostUuid(dstHostUuid);
+                                        newRef.setResourceUuid(ref.getResourceUuid());
+                                        newRef.setPrimaryStorageUuid(ref.getPrimaryStorageUuid());
+                                        newRef.setResourceType(ref.getResourceType());
+                                        newRef.setSize(ref.getSize());
+                                        newRef.setCreateDate(ref.getCreateDate());
+                                        dbf.getEntityManager().persist(newRef);
+                                        dbf.getEntityManager().remove(ref);
+                                    }
+                                }
+                            }.execute();
+                        }
+
                         @Override
                         public void run(FlowTrigger trigger, Map data) {
-                            List<String> spUuids = CollectionUtils.transformToList(allSnapshots, new Function<String, VolumeSnapshotInventory>() {
-                                @Override
-                                public String call(VolumeSnapshotInventory arg) {
-                                    return arg.getUuid();
-                                }
-                            });
+                            List<String> spUuids = CollectionUtils.transformToList(allSnapshots,
+                                    (VolumeSnapshotInventory sp) -> sp.getUuid()
+                            );
 
-                            SimpleQuery<LocalStorageResourceRefVO> q = dbf.createQuery(LocalStorageResourceRefVO.class);
-                            q.add(LocalStorageResourceRefVO_.resourceUuid, Op.IN, spUuids);
-                            q.add(LocalStorageResourceRefVO_.resourceType, Op.EQ, VolumeSnapshotVO.class.getSimpleName());
-                            List<LocalStorageResourceRefVO> refs = q.list();
-                            for (LocalStorageResourceRefVO ref : refs) {
-                                ref.setHostUuid(dstHostUuid);
-                            }
+                            updateSnapshotsInfo(spUuids);
 
-                            dbf.updateCollection(refs);
                             trigger.next();
                         }
                     });
@@ -667,7 +704,7 @@ public class LocalStorageKvmMigrateVmFlow extends NoRollbackFlow {
                                     for (MessageReply r : replies) {
                                         VolumeSnapshotInventory sp = allSnapshots.get(replies.indexOf(r));
                                         if (!r.isSuccess()) {
-                                            //TODO
+                                            //TODO add GC
                                             logger.warn(String.format("failed to delete the snapshot[%s] on the local primary storage[uuid:%s], %s",
                                                     sp.getPrimaryStorageInstallPath(), ref.getPrimaryStorageUuid(), r.getError()));
                                         }
@@ -702,7 +739,7 @@ public class LocalStorageKvmMigrateVmFlow extends NoRollbackFlow {
                             public void run(List<MessageReply> replies) {
                                 for (MessageReply r : replies) {
                                     if (!r.isSuccess()) {
-                                        //TODO:
+                                        //TODO: add GC
                                         VolumeInventory vol = volumesOnLocalStorage.get(replies.indexOf(r));
                                         logger.warn(String.format("failed to delete the volume[%s] in the host[uuid:%s] for the local" +
                                                         " primary storage[uuid:%s] during after the vm[uuid:%s] migrated to the host[uuid:%s, ip:%s], %s",
@@ -769,7 +806,7 @@ public class LocalStorageKvmMigrateVmFlow extends NoRollbackFlow {
             @Override
             public void run(MessageReply reply) {
                 if (!reply.isSuccess()) {
-                    //TODO
+                    //TODO recalculate host capacity
                     logger.warn(String.format("failed to return capacity[%s] to the host[uuid:%s] of local storage[uuid:%s], %s",
                             size, dstHostUuid, primaryStorageUuid, reply.getError()));
                 }
@@ -796,6 +833,10 @@ public class LocalStorageKvmMigrateVmFlow extends NoRollbackFlow {
     }
 
     private <T extends AgentResponse> void callKvmHost(final String hostUuid, final String psUuid, String path, AgentCommand cmd, final Class<T> rspType, final ReturnValueCompletion<T> completion) {
+        cmd.storagePath = Q.New(PrimaryStorageVO.class).
+                eq(PrimaryStorageVO_.uuid, psUuid).
+                select(PrimaryStorageVO_.url).
+                findValue();
         KVMHostAsyncHttpCallMsg msg = new KVMHostAsyncHttpCallMsg();
         msg.setCommand(cmd);
         msg.setCommandTimeout(timeoutMgr.getTimeout(cmd.getClass(), "5m"));
@@ -1088,7 +1129,7 @@ public class LocalStorageKvmMigrateVmFlow extends NoRollbackFlow {
                         bus.send(msg, new CloudBusCallBack(null) {
                             @Override
                             public void run(MessageReply reply) {
-                                //TODO
+                                //TODO GC
                                 logger.warn(String.format("failed to delete %s on the local primary storage[uuid:%s], host[uuid:%s], %s",
                                         p.volume.getInstallPath(), p.volume.getPrimaryStorageUuid(), dstHostUuid, reply.getError()));
                             }
@@ -1195,7 +1236,7 @@ public class LocalStorageKvmMigrateVmFlow extends NoRollbackFlow {
                             @Override
                             public void run(MessageReply r) {
                                 if (!r.isSuccess()) {
-                                    //TODO
+                                    //TODO GC
                                     logger.warn(String.format("failed to delete %s on the local primary storage[uuid:%s], host[uuid:%s], %s",
                                             vol.getInstallPath(), vol.getPrimaryStorageUuid(), dstHostUuid, r.getError()));
                                 }

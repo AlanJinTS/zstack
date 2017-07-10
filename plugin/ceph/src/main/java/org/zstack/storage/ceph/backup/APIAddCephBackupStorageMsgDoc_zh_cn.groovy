@@ -7,18 +7,18 @@ doc {
 
     category "storage.ceph.backup"
 
-    desc "添加Ceph镜像服务器"
+    desc """添加Ceph镜像服务器"""
 
     rest {
         request {
 			url "POST /v1/backup-storage/ceph"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIAddCephBackupStorageMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -104,7 +104,7 @@ doc {
 				}
 				column {
 					name "systemTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "系统标签"
 					location "body"
 					type "List"
@@ -114,7 +114,7 @@ doc {
 				}
 				column {
 					name "userTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "用户标签"
 					location "body"
 					type "List"

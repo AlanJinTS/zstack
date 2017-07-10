@@ -1,5 +1,7 @@
 package org.zstack.header.vm
 
+import org.zstack.header.vm.APIGetVmHostnameReply
+
 doc {
     title "获取云主机Hostname(GetVmHostname)"
 
@@ -9,48 +11,48 @@ doc {
 
     rest {
         request {
-            url "GET /v1/vm-instances/{uuid}/hostnames"
+			url "GET /v1/vm-instances/{uuid}/hostnames"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header(OAuth: 'the-session-uuid')
 
             clz APIGetVmHostnameMsg.class
 
-            desc ""
+            desc """"""
+            
+			params {
 
-            params {
-
-                column {
-                    name "uuid"
-                    enclosedIn ""
-                    desc "云主机UUID"
-                    location "url"
-                    type "String"
-                    optional false
-                    since "0.6"
-
-                }
-                column {
-                    name "systemTags"
-                    enclosedIn ""
-                    desc "系统标签"
-                    location "query"
-                    type "List"
-                    optional true
-                    since "0.6"
-
-                }
-                column {
-                    name "userTags"
-                    enclosedIn ""
-                    desc "用户标签"
-                    location "query"
-                    type "List"
-                    optional true
-                    since "0.6"
-
-                }
-            }
+				column {
+					name "uuid"
+					enclosedIn ""
+					desc "云主机UUID"
+					location "url"
+					type "String"
+					optional false
+					since "0.6"
+					
+				}
+				column {
+					name "systemTags"
+					enclosedIn ""
+					desc "系统标签"
+					location "query"
+					type "List"
+					optional true
+					since "0.6"
+					
+				}
+				column {
+					name "userTags"
+					enclosedIn ""
+					desc "用户标签"
+					location "query"
+					type "List"
+					optional true
+					since "0.6"
+					
+				}
+			}
         }
 
         response {

@@ -72,10 +72,10 @@ public class GetLocalStorageHostDiskCapacityAction extends AbstractAction {
     RestInfo getRestInfo() {
         RestInfo info = new RestInfo();
         info.httpMethod = "GET";
-        info.path = "/primary-storage/local-storage/capacities";
+        info.path = "/primary-storage/local-storage/{primaryStorageUuid}/capacities";
         info.needSession = true;
         info.needPoll = false;
-        info.parameterName = "params";
+        info.parameterName = "";
         return info;
     }
 

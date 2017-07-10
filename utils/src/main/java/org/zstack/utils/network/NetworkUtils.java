@@ -228,7 +228,9 @@ public class NetworkUtils {
         if (startIp > endIp) {
             throw new IllegalArgumentException(String.format("[%s, %s] is an invalid ip range, end ip must be greater than start ip", longToIpv4String(startIp), longToIpv4String(endIp)));
         }
-
+        if (startIp.equals(endIp) && allocatedIps.length == 0 ) {
+            return startIp;
+        }
         if (allocatedIps.length == 0) {
             return startIp;
         }
@@ -268,6 +270,9 @@ public class NetworkUtils {
 
     public static String randomAllocateIpv4Address(Long startIp, Long endIp, List<Long> allocatedIps) {
         int total = (int)(endIp - startIp + 1);
+        if (startIp.equals(endIp) && allocatedIps.size() == 0){
+            return longToIpv4String(startIp);
+        }
         if (total == allocatedIps.size()) {
             return null;
         }
@@ -297,6 +302,13 @@ public class NetworkUtils {
         long s = ipv4StringToLong(startIp);
         long e = ipv4StringToLong(endIp);
         return (int) (e - s + 1);
+    }
+
+    public static int getTotalIpInCidr(String cidr) {
+        DebugUtils.Assert(isCidr(cidr), String.format("%s is not a cidr", cidr));
+        SubnetUtils.SubnetInfo range = new SubnetUtils(cidr).getInfo();
+
+        return getTotalIpInRange(range.getLowAddress(), range.getHighAddress());
     }
 
 
@@ -462,6 +474,35 @@ public class NetworkUtils {
     public static boolean isIpRoutedByDefaultGateway(String ip) {
         ShellResult res = ShellUtils.runAndReturn(String.format("ip route get %s | grep -q \"via $(ip route | awk '/default/ {print $3}')\"", ip));
         return res.isReturnCode(0);
+    }
+
+    public static boolean isSubCidr(String cidr, String subCidr) {
+        DebugUtils.Assert(isCidr(cidr), String.format("%s is not a cidr", cidr));
+        DebugUtils.Assert(isCidr(subCidr), String.format("%s is not a cidr", subCidr));
+
+        SubnetUtils.SubnetInfo range = new SubnetUtils(cidr).getInfo();
+        SubnetUtils.SubnetInfo sub = new SubnetUtils(subCidr).getInfo();
+        return range.isInRange(sub.getLowAddress()) && range.isInRange(sub.getHighAddress());
+    }
+    
+    public static String getNetworkAddressFromCidr(String cidr) {
+        DebugUtils.Assert(isCidr(cidr), String.format("%s is not a cidr", cidr));
+        SubnetUtils n = new SubnetUtils(cidr);
+        return String.format("%s/%s", n.getInfo().getNetworkAddress(), cidr.split("\\/")[1]);
+    }
+
+
+    public static List<String> getIpRangeFromIps(List<String> ips){
+        List<Pair<String, String>> ipRanges = findConsecutiveIpRange(ips);
+        List<String> internalIpRanges = new ArrayList<String>(ipRanges.size());
+        for (Pair<String, String> p : ipRanges) {
+            if (p.first().equals(p.second())) {
+                internalIpRanges.add(p.first());
+            } else {
+                internalIpRanges.add(String.format("%s-%s", p.first(), p.second()));
+            }
+        }
+        return internalIpRanges;
     }
 }
 

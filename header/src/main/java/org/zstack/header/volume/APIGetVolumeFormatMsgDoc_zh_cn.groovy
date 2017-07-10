@@ -1,22 +1,24 @@
 package org.zstack.header.volume
 
+import org.zstack.header.volume.APIGetVolumeFormatReply
+
 doc {
     title "GetVolumeFormat"
 
     category "volume"
 
-    desc "获取云盘格式"
+    desc """获取云盘格式"""
 
     rest {
         request {
 			url "GET /v1/volumes/formats"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIGetVolumeFormatMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

@@ -260,6 +260,7 @@ public class SftpBackupStorage extends BackupStorageBase {
     @Override
     protected void pingHook(final Completion completion) {
         final PingCmd cmd = new PingCmd();
+        cmd.uuid = self.getUuid();
         restf.asyncJsonPost(buildUrl(SftpBackupStorageConstant.PING_PATH), cmd, new JsonAsyncRESTCallback<PingResponse>(completion) {
             @Override
             public void fail(ErrorCode err) {
@@ -395,7 +396,7 @@ public class SftpBackupStorage extends BackupStorageBase {
                 if (!ret.isSuccess()) {
                     logger.warn(String.format("failed to delete bits[%s], schedule clean up, %s",
                             msg.getInstallPath(), ret.getError()));
-                    //TODO: schedule cleanup
+                    //TODO GC
                 } else {
                     updateCapacity(ret.getTotalCapacity(), ret.getAvailableCapacity());
                 }
@@ -462,6 +463,37 @@ public class SftpBackupStorage extends BackupStorageBase {
             public Class<GetImageSizeRsp> getReturnClass() {
                 return GetImageSizeRsp.class;
             }
+        });
+    }
+
+    @Override
+    protected void handle(GetLocalFileSizeOnBackupStorageMsg msg) {
+        GetLocalFileSizeOnBackupStorageReply reply = new GetLocalFileSizeOnBackupStorageReply();
+        GetLocalFileSizeCmd cmd = new GetLocalFileSizeCmd();
+        cmd.path = msg.getUrl();
+        restf.asyncJsonPost(buildUrl(SftpBackupStorageConstant.GET_LOCAL_FILE_SIZE), cmd,
+                new JsonAsyncRESTCallback<GetLocalFileSizeRsp>(msg) {
+                    @Override
+                    public void fail(ErrorCode err) {
+                        reply.setError(err);
+                        bus.reply(msg, reply);
+                    }
+
+                    @Override
+                    public void success(GetLocalFileSizeRsp rsp) {
+                        if (!rsp.isSuccess()) {
+                            reply.setError(operr(rsp.getError()));
+                        } else {
+                            reply.setSize(rsp.size);
+                        }
+
+                        bus.reply(msg, reply);
+                    }
+
+                    @Override
+                    public Class<GetLocalFileSizeRsp> getReturnClass() {
+                        return GetLocalFileSizeRsp.class;
+                    }
         });
     }
 

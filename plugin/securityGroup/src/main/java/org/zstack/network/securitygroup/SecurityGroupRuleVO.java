@@ -1,20 +1,17 @@
 package org.zstack.network.securitygroup;
 
-import org.zstack.header.search.TriggerIndex;
+import org.zstack.header.vo.BaseResource;
 import org.zstack.header.vo.ForeignKey;
 import org.zstack.header.vo.ForeignKey.ReferenceOption;
+import org.zstack.header.vo.ResourceVO;
 
 import javax.persistence.*;
 import java.sql.Timestamp;
 
 @Entity
 @Table
-@TriggerIndex
-public class SecurityGroupRuleVO {
-    @Id
-    @Column
-    private String uuid;
-    
+@BaseResource
+public class SecurityGroupRuleVO extends ResourceVO {
     @Column
     @ForeignKey(parentEntityClass = SecurityGroupVO.class, onDeleteAction = ReferenceOption.CASCADE)
     private String securityGroupUuid;
@@ -39,6 +36,10 @@ public class SecurityGroupRuleVO {
 
     @Column
     private String allowedCidr;
+
+    @Column
+    @ForeignKey(parentEntityClass = SecurityGroupVO.class, onDeleteAction = ReferenceOption.CASCADE)
+    private String remoteSecurityGroupUuid;
     
     @Column
     private Timestamp createDate;
@@ -57,14 +58,6 @@ public class SecurityGroupRuleVO {
 
     public void setState(SecurityGroupRuleState state) {
         this.state = state;
-    }
-
-    public String getUuid() {
-        return uuid;
-    }
-
-    public void setUuid(String uuid) {
-        this.uuid = uuid;
     }
 
     public String getSecurityGroupUuid() {
@@ -113,6 +106,14 @@ public class SecurityGroupRuleVO {
 
     public void setAllowedCidr(String allowedCidr) {
         this.allowedCidr = allowedCidr;
+    }
+
+    public void setRemoteSecurityGroupUuid(String remoteSecurityGroupUuid) {
+        this.remoteSecurityGroupUuid = remoteSecurityGroupUuid;
+    }
+
+    public String getRemoteSecurityGroupUuid() {
+        return remoteSecurityGroupUuid;
     }
 
     public Timestamp getCreateDate() {

@@ -101,7 +101,8 @@ class VirtualRouterOfferingSpec extends InstanceOfferingSpec {
             return new ApplianceVmKvmCommands.PrepareBootstrapInfoRsp()
         }
 
-        simulator(ApplianceVmConstant.ECHO_PATH) {
+        simulator(ApplianceVmConstant.ECHO_PATH) { HttpEntity<String> e ->
+            checkHttpCallType(e, true)
             return [:]
         }
 
@@ -145,7 +146,8 @@ class VirtualRouterOfferingSpec extends InstanceOfferingSpec {
             return new VirtualRouterCommands.CreatePortForwardingRuleRsp()
         }
 
-        simulator(VirtualRouterConstant.VR_ECHO_PATH) {
+        simulator(VirtualRouterConstant.VR_ECHO_PATH) { HttpEntity<String> e ->
+            checkHttpCallType(e, true)
             return [:]
         }
 
@@ -182,6 +184,10 @@ class VirtualRouterOfferingSpec extends InstanceOfferingSpec {
 
         simulator(VirtualRouterConstant.VR_CONFIGURE_NIC_PATH) {
             return new VirtualRouterCommands.ConfigureNicRsp()
+        }
+
+        simulator(VirtualRouterConstant.VR_REMOVE_NIC_PATH) {
+            return new VirtualRouterCommands.RemoveNicRsp()
         }
 
         simulator(VirtualRouterConstant.VR_REMOVE_DHCP_PATH) {

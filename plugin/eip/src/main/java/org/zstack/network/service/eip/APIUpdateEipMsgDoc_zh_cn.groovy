@@ -7,18 +7,18 @@ doc {
 
     category "弹性IP"
 
-    desc "更新弹性IP"
+    desc """更新弹性IP"""
 
     rest {
         request {
 			url "PUT /v1/eips/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIUpdateEipMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

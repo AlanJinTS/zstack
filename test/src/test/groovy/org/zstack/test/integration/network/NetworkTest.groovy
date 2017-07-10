@@ -14,6 +14,8 @@ class NetworkTest extends Test {
         localStorage()
         sftpBackupStorage()
         flatNetwork()
+        securityGroup()
+        nfsPrimaryStorage()
         include("vip.xml")
         include("vxlan.xml")
     }
@@ -21,6 +23,10 @@ class NetworkTest extends Test {
     @Override
     void setup() {
         useSpring(springSpec)
+        spring {
+            include("eip.xml")
+            securityGroup()
+        }
     }
 
     @Override

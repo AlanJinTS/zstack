@@ -2,17 +2,14 @@ package org.zstack.header.image;
 
 import org.zstack.header.image.ImageConstant.ImageMediaType;
 import org.zstack.header.vo.Index;
+import org.zstack.header.vo.ResourceVO;
 import org.zstack.header.vo.ShadowEntity;
 
 import javax.persistence.*;
 import java.sql.Timestamp;
 
 @MappedSuperclass
-public class ImageAO implements ShadowEntity {
-    @Id
-    @Column
-    private String uuid;
-
+public class ImageAO extends ResourceVO implements ShadowEntity {
     @Column
     @Index
     private String name;
@@ -41,6 +38,9 @@ public class ImageAO implements ShadowEntity {
 
     @Column
     private String md5Sum;
+
+    @Column
+    private String exportMd5Sum;
 
     @Column
     @Enumerated(EnumType.STRING)
@@ -107,14 +107,6 @@ public class ImageAO implements ShadowEntity {
         this.platform = platform;
     }
 
-    public String getUuid() {
-        return uuid;
-    }
-
-    public void setUuid(String uuid) {
-        this.uuid = uuid;
-    }
-
     public String getName() {
         return name;
     }
@@ -161,6 +153,14 @@ public class ImageAO implements ShadowEntity {
 
     public void setMd5Sum(String md5Sum) {
         this.md5Sum = md5Sum;
+    }
+
+    public String getExportMd5Sum() {
+        return exportMd5Sum;
+    }
+
+    public void setExportMd5Sum(String exportMd5Sum) {
+        this.exportMd5Sum = exportMd5Sum;
     }
 
     public String getUrl() {

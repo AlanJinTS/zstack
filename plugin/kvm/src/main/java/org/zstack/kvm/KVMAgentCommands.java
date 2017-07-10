@@ -7,6 +7,7 @@ import org.zstack.header.storage.snapshot.APIDeleteVolumeSnapshotMsg;
 import org.zstack.header.vm.APICreateVmInstanceMsg;
 import org.zstack.header.vm.VmBootDevice;
 import org.zstack.header.volume.APICreateVolumeSnapshotMsg;
+import org.zstack.network.securitygroup.SecurityGroupMembersTO;
 import org.zstack.network.securitygroup.SecurityGroupRuleTO;
 
 import java.util.ArrayList;
@@ -48,6 +49,7 @@ public class KVMAgentCommands {
 
         public void setError(String error) {
             this.error = error;
+            this.success = false;
         }
 
         @Override
@@ -350,6 +352,7 @@ public class KVMAgentCommands {
         }
     }
 
+
     public static class CreateBridgeResponse extends AgentResponse {
     }
 
@@ -388,6 +391,7 @@ public class KVMAgentCommands {
             this.vlan = vlan;
         }
     }
+
 
     public static class CheckVlanBridgeResponse extends CheckBridgeResponse {
     }
@@ -510,6 +514,7 @@ public class KVMAgentCommands {
             this.useVirtioSCSI = other.useVirtioSCSI;
             this.cacheMode = other.cacheMode;
             this.wwn = other.wwn;
+            this.shareable = other.shareable;
         }
 
         public boolean isShareable() {
@@ -693,6 +698,7 @@ public class KVMAgentCommands {
         private long vmInternalId;
         private String vmName;
         private long memory;
+        private long maxMemory;
         private int cpuNum;
         private long cpuSpeed;
         private int socketNum;
@@ -712,6 +718,32 @@ public class KVMAgentCommands {
         private String hostManagementIp;
         private String clock;
         private String videoType;
+        private boolean useNuma;
+        private String usbRedirect;
+
+        public String getUsbRedirect() {
+            return usbRedirect;
+        }
+
+        public void setUsbRedirect(String usbRedirect) {
+            this.usbRedirect = usbRedirect;
+        }
+
+        public boolean isUseNuma() {
+            return useNuma;
+        }
+
+        public void setUseNuma(boolean useNuma) {
+            this.useNuma = useNuma;
+        }
+
+        public long getMaxMemory() {
+            return maxMemory;
+        }
+
+        public void setMaxMemory(long maxMemory) {
+            this.maxMemory = maxMemory;
+        }
 
         public String getVideoType() {
             return videoType;
@@ -955,6 +987,72 @@ public class KVMAgentCommands {
         }
     }
 
+    public static class IncreaseCpuCmd extends AgentCommand{
+        private String vmUuid;
+        private int cpuNum;
+
+        public void setVmUuid(String vmUuid) {
+            this.vmUuid = vmUuid;
+        }
+
+        public String getVmUuid() {
+            return vmUuid;
+        }
+
+        public void setCpuNum(int cpuNum) {
+            this.cpuNum = cpuNum;
+        }
+
+        public int getCpuNum() {
+            return cpuNum;
+        }
+    }
+
+    public static class IncreaseCpuResponse extends AgentResponse{
+        private int cpuNum;
+
+        public void setCpuNum(int cpuNum) {
+            this.cpuNum = cpuNum;
+        }
+
+        public int getCpuNum() {
+            return cpuNum;
+        }
+    }
+
+    public static class IncreaseMemoryCmd extends AgentCommand{
+        private String vmUuid;
+        private long memorySize;
+
+        public void setVmUuid(String vmUuid) {
+            this.vmUuid = vmUuid;
+        }
+
+        public String getVmUuid() {
+            return vmUuid;
+        }
+
+        public void setMemorySize(long memorySize) {
+            this.memorySize = memorySize;
+        }
+
+        public long getMemorySize() {
+            return memorySize;
+        }
+    }
+
+    public static class IncreaseMemoryResponse extends AgentResponse{
+        private long memorySize;
+
+        public void setMemorySize(long memorySize) {
+            this.memorySize = memorySize;
+        }
+
+        public long getMemorySize() {
+            return memorySize;
+        }
+    }
+
     public static class GetVncPortCmd extends AgentCommand {
         private String vmUuid;
 
@@ -1144,6 +1242,21 @@ public class KVMAgentCommands {
     public static class RefreshAllRulesOnHostResponse extends AgentResponse {
     }
 
+    public static class UpdateGroupMemberCmd extends AgentCommand {
+        private List<SecurityGroupMembersTO> updateGroupTOs;
+
+        public void setUpdateGroupTOs(List<SecurityGroupMembersTO> updateGroupTOs) {
+            this.updateGroupTOs = updateGroupTOs;
+        }
+
+        public List<SecurityGroupMembersTO> getUpdateGroupTOs() {
+            return updateGroupTOs;
+        }
+    }
+
+    public static class UpdateGroupMemberResponse extends AgentResponse {
+    }
+
     public static class CleanupUnusedRulesOnHostCmd extends AgentCommand {
     }
 
@@ -1171,6 +1284,15 @@ public class KVMAgentCommands {
         private String destHostIp;
         private String storageMigrationPolicy;
         private String srcHostIp;
+        private boolean useNuma;
+
+        public boolean isUseNuma() {
+            return useNuma;
+        }
+
+        public void setUseNuma(boolean useNuma) {
+            this.useNuma = useNuma;
+        }
 
         public String getSrcHostIp() {
             return srcHostIp;
@@ -1461,5 +1583,11 @@ public class KVMAgentCommands {
     public static class ReconnectMeCmd {
         public String hostUuid;
         public String reason;
+    }
+
+    public static class ReportPsStatusCmd {
+        public String hostUuid;
+        public List<String> psUuids;
+        public String psStatus;
     }
 }

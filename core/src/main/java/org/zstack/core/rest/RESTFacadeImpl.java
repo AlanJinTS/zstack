@@ -3,7 +3,6 @@ package org.zstack.core.rest;
 import org.apache.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
-import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
@@ -62,7 +61,7 @@ public class RESTFacadeImpl implements RESTFacade {
     private int port = 8080;
     private String path;
     private String callbackUrl;
-    private RestTemplate template;
+    private TimeoutRestTemplate template;
     private String baseUrl;
     private String sendCommandUrl;
 
@@ -112,10 +111,7 @@ public class RESTFacadeImpl implements RESTFacade {
         sendCommandUrl = ub.build().toUriString();
 
         logger.debug(String.format("RESTFacade built callback url: %s", callbackUrl));
-        HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory();
-        factory.setReadTimeout(CoreGlobalProperty.REST_FACADE_READ_TIMEOUT);
-        factory.setConnectTimeout(CoreGlobalProperty.REST_FACADE_CONNECT_TIMEOUT);
-        template = new RestTemplate(factory);
+        template = RESTFacade.createRestTemplate(CoreGlobalProperty.REST_FACADE_READ_TIMEOUT, CoreGlobalProperty.REST_FACADE_CONNECT_TIMEOUT);
     }
 
     void notifyCallback(HttpServletRequest req, HttpServletResponse rsp) {
@@ -323,6 +319,8 @@ public class RESTFacadeImpl implements RESTFacade {
             requestHeaders.setContentLength(body.length());
             requestHeaders.set(RESTConstant.TASK_UUID, taskUuid);
             requestHeaders.set(RESTConstant.CALLBACK_URL, callbackUrl);
+            MediaType JSON = MediaType.parseMediaType("application/json; charset=utf-8");
+            requestHeaders.setContentType(JSON);
 
             if (headers != null) {
                 for (Map.Entry<String, String> e : headers.entrySet()) {
@@ -345,7 +343,7 @@ public class RESTFacadeImpl implements RESTFacade {
                         @Override
                         @RetryCondition(onExceptions = {IOException.class, RestClientException.class, HttpClientErrorException.class})
                         protected ResponseEntity<String> call() {
-                            return template.exchange(url, HttpMethod.POST, req, String.class);
+                            return template.exchange(url, HttpMethod.POST, req, String.class, taskUuid, unit.toMillis(timeout), unit.toMillis(timeout));
                         }
                     }.run();
                 }

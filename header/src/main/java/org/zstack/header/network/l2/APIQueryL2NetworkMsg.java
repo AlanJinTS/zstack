@@ -11,13 +11,11 @@ import java.util.List;
 import static java.util.Arrays.asList;
 
 @AutoQuery(replyClass = APIQueryL2NetworkReply.class, inventoryClass = L2NetworkInventory.class)
-@Action(category = L2NetworkConstant.ACTION_CATEGORY, names = {"read"})
 @RestRequest(
         path = "/l2-networks",
         optionalPaths = {"/l2-networks/{uuid}"},
         method = HttpMethod.GET,
-        responseClass = APIQueryL2NetworkReply.class,
-        parameterName = "null"
+        responseClass = APIQueryL2NetworkReply.class
 )
 public class APIQueryL2NetworkMsg extends APIQueryMessage {
 

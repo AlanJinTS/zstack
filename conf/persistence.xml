@@ -14,6 +14,9 @@
         <class>org.zstack.core.job.JobQueueEntryVO</class>
         <class>org.zstack.core.config.GlobalConfigVO</class>
         <class>org.zstack.header.core.scheduler.SchedulerVO</class>
+        <class>org.zstack.header.core.scheduler.SchedulerJobVO</class>
+        <class>org.zstack.header.core.scheduler.SchedulerTriggerVO</class>
+        <class>org.zstack.header.core.scheduler.SchedulerJobSchedulerTriggerRefVO</class>
         <class>org.zstack.header.managementnode.ManagementNodeVO</class>
         <class>org.zstack.header.managementnode.ManagementNodeContextVO</class>
         <class>org.zstack.header.zone.ZoneVO</class>
@@ -26,6 +29,7 @@
         <class>org.zstack.header.storage.primary.PrimaryStorageEO</class>
         <class>org.zstack.header.storage.primary.PrimaryStorageClusterRefVO</class>
         <class>org.zstack.header.storage.primary.PrimaryStorageCapacityVO</class>
+        <class>org.zstack.header.storage.primary.PrimaryStorageHostRefVO</class>
         <class>org.zstack.header.storage.backup.BackupStorageVO</class>
         <class>org.zstack.header.storage.backup.BackupStorageEO</class>
         <class>org.zstack.header.storage.backup.BackupStorageZoneRefVO</class>
@@ -125,19 +129,15 @@
         <class>org.zstack.network.service.lb.LoadBalancerListenerVO</class>
         <class>org.zstack.header.console.ConsoleProxyAgentVO</class>
         <class>org.zstack.header.storage.primary.ImageCacheShadowVO</class>
-        <class>org.zstack.alert.AlarmVO</class>
-        <class>org.zstack.alert.AlarmLabelVO</class>
-        <class>org.zstack.alert.AlertVO</class>
-        <class>org.zstack.alert.AlertLabelVO</class>
-        <class>org.zstack.alert.AlertTimestampVO</class>
         <class>org.zstack.ldap.LdapServerVO</class>
         <class>org.zstack.ldap.LdapAccountRefVO</class>
         <class>org.zstack.core.jsonlabel.JsonLabelVO</class>
         <class>org.zstack.rest.AsyncRestVO</class>
         <class>org.zstack.storage.ceph.primary.CephPrimaryStoragePoolVO</class>
         <class>org.zstack.header.core.progress.TaskProgressVO</class>
-        <class>org.zstack.header.core.progress.TaskStepVO</class>
         <class>org.zstack.core.notification.NotificationVO</class>
         <class>org.zstack.core.notification.NotificationSubscriptionVO</class>
+        <class>org.zstack.header.vo.ResourceVO</class>
+        <class>org.zstack.header.core.webhooks.WebhookVO</class>
     </persistence-unit>
 </persistence>

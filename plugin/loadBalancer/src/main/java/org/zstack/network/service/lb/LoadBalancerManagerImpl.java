@@ -8,6 +8,8 @@ import org.zstack.core.cloudbus.MessageSafe;
 import org.zstack.core.componentloader.PluginRegistry;
 import org.zstack.core.db.DatabaseFacade;
 import org.zstack.core.errorcode.ErrorFacade;
+import org.zstack.core.thread.ChainTask;
+import org.zstack.core.thread.SyncTaskChain;
 import org.zstack.core.workflow.FlowChainBuilder;
 import org.zstack.core.workflow.ShareFlow;
 import org.zstack.header.AbstractService;
@@ -157,7 +159,7 @@ public class LoadBalancerManagerImpl extends AbstractService implements LoadBala
 
                             @Override
                             public void fail(ErrorCode errorCode) {
-                                //TODO
+                                //TODO add GC
                                 logger.warn(errorCode.toString());
                                 trigger.rollback();
                             }
@@ -350,7 +352,7 @@ public class LoadBalancerManagerImpl extends AbstractService implements LoadBala
                 String protocol = ts[0];
                 if (!LoadBalancerConstants.HEALTH_CHECK_TARGET_PROTOCOLS.contains(protocol)) {
                     throw new OperationFailureException(argerr("invalid health target[%s], the target checking protocol[%s] is invalid, valid protocols are %s",
-                                    systemTag, protocol, LoadBalancerConstants.HEALTH_CHECK_TARGET_PROTOCOLS));
+                            systemTag, protocol, LoadBalancerConstants.HEALTH_CHECK_TARGET_PROTOCOLS));
                 }
 
                 String port = ts[1];

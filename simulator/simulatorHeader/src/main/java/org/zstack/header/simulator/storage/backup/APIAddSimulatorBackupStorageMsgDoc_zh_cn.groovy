@@ -7,18 +7,18 @@ doc {
 
     category "storage.backup"
 
-    desc "在这里填写API描述"
+    desc """在这里填写API描述"""
 
     rest {
         request {
 			url "POST /v1/backup-storage/simulators"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIAddSimulatorBackupStorageMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

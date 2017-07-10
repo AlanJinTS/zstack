@@ -1,22 +1,24 @@
 package org.zstack.header.storage.primary
 
+import org.zstack.header.storage.primary.APIDeletePrimaryStorageEvent
+
 doc {
     title "删除主存储(DeletePrimaryStorage)"
 
     category "storage.primary"
 
-    desc "删除主存储"
+    desc """删除主存储"""
 
     rest {
         request {
 			url "DELETE /v1/primary-storage/{uuid}"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIDeletePrimaryStorageMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -32,8 +34,8 @@ doc {
 				}
 				column {
 					name "deleteMode"
- 					enclosedIn "params"
- 					desc "删除模式(Permissive 或者 Enforcing, 默认 Permissive)"
+					enclosedIn ""
+					desc "删除模式(Permissive 或者 Enforcing, 默认 Permissive)"
 					location "body"
 					type "String"
 					optional true
@@ -42,7 +44,7 @@ doc {
 				}
 				column {
 					name "systemTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "系统标签"
 					location "body"
 					type "List"
@@ -52,7 +54,7 @@ doc {
 				}
 				column {
 					name "userTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "用户标签"
 					location "body"
 					type "List"

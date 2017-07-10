@@ -7,18 +7,18 @@ doc {
 
     category "弹性IP"
 
-    desc "绑定弹性IP"
+    desc """绑定弹性IP"""
 
     rest {
         request {
 			url "POST /v1/eips/{eipUuid}/vm-instances/nics/{vmNicUuid"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIAttachEipMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -44,8 +44,8 @@ doc {
 				}
 				column {
 					name "systemTags"
- 					enclosedIn ""
- 					desc "系统标签"
+					enclosedIn ""
+					desc "系统标签"
 					location "body"
 					type "List"
 					optional true

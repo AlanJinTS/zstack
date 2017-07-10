@@ -7,18 +7,18 @@ doc {
 
     category "gc"
 
-    desc "在这里填写API描述"
+    desc """在这里填写API描述"""
 
     rest {
         request {
 			url "PUT /v1/gc-jobs/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APITriggerGCJobMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

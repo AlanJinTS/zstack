@@ -1,5 +1,7 @@
 package org.zstack.storage.backup.sftp
 
+import org.zstack.storage.backup.sftp.APIQuerySftpBackupStorageReply
+import org.zstack.header.query.APIQueryMessage
 import org.zstack.header.query.APIQueryMessage
 
 doc {
@@ -7,20 +9,19 @@ doc {
 
     category "storage.backup.sftp"
 
-    desc "查询所有的Sftp镜像服务器"
+    desc """查询所有的Sftp镜像服务器"""
 
     rest {
         request {
 			url "GET /v1/backup-storage/sftp"
-
 			url "GET /v1/backup-storage/sftp/{uuid}"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIQuerySftpBackupStorageMsg.class
 
-            desc ""
+            desc """"""
             
 			params APIQueryMessage.class
         }

@@ -7,18 +7,18 @@ doc {
 
     category "负载均衡"
 
-    desc "删除负载均衡监听器"
+    desc """删除负载均衡监听器"""
 
     rest {
         request {
 			url "DELETE /v1/load-balancers/listeners/{uuid}"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIDeleteLoadBalancerListenerMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

@@ -7,26 +7,26 @@ doc {
 
     category "弹性IP"
 
-    desc "获取可绑定指定弹性IP的云主机网卡"
+    desc """获取可绑定指定弹性IP的云主机网卡"""
 
     rest {
         request {
-			url "GET /v1/eips/vm-instances/candidate-nics"
+			url "GET /v1/eips/{eipUuid}/vm-instances/candidate-nics"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIGetEipAttachableVmNicsMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
 				column {
 					name "eipUuid"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "弹性IP UUID"
-					location "query"
+					location "url"
 					type "String"
 					optional true
 					since "0.6"
@@ -34,7 +34,7 @@ doc {
 				}
 				column {
 					name "vipUuid"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "VIP UUID"
 					location "query"
 					type "String"

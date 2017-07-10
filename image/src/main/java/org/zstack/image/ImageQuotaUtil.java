@@ -16,11 +16,8 @@ import org.zstack.header.identity.Quota;
 import org.zstack.header.image.APIAddImageMsg;
 import org.zstack.header.image.ImageConstant;
 import org.zstack.header.image.ImageVO;
-import org.zstack.header.message.MessageReply;
 import org.zstack.header.rest.RESTFacade;
-import org.zstack.header.storage.backup.BackupStorageConstant;
-import org.zstack.header.storage.backup.GetImageSizeOnBackupStorageMsg;
-import org.zstack.header.storage.backup.GetImageSizeOnBackupStorageReply;
+import org.zstack.header.storage.backup.*;
 import org.zstack.utils.Utils;
 import org.zstack.utils.logging.CLogger;
 
@@ -92,46 +89,44 @@ public class ImageQuotaUtil {
     public void checkImageSizeQuotaUseHttpHead(APIAddImageMsg msg, Map<String, Quota.QuotaPair> pairs) {
         long imageSizeQuota = pairs.get(ImageConstant.QUOTA_IMAGE_SIZE).getValue();
         long imageSizeUsed = new ImageQuotaUtil().getUsedImageSize(msg.getSession().getAccountUuid());
-
-        long imageSizeAsked;
-        String url = msg.getUrl();
-        url = url.trim();
-
-        if (url.startsWith("file:///")) {
-            GetImageSizeOnBackupStorageMsg cmsg = new GetImageSizeOnBackupStorageMsg();
-            cmsg.setBackupStorageUuid(msg.getBackupStorageUuids().get(0));
-            cmsg.setImageUrl(url);
-            cmsg.setImageUuid(msg.getResourceUuid());
-            bus.makeTargetServiceIdByResourceUuid(cmsg, BackupStorageConstant.SERVICE_ID,
-                    msg.getBackupStorageUuids().get(0));
-            MessageReply reply = bus.call(cmsg);
-            if (!reply.isSuccess()) {
-                throw new OperationFailureException(reply.getError());
-            }
-
-            imageSizeAsked = ((GetImageSizeOnBackupStorageReply) reply).getSize();
-        } else if (url.startsWith("http") || url.startsWith("https")) {
-            String len;
-            try {
-                HttpHeaders header = restf.getRESTTemplate().headForHeaders(url);
-                len = header.getFirst("Content-Length");
-            } catch (Exception e) {
-                logger.warn(String.format("cannot get image.  The image url : %s. description: %s.name: %s",
-                        url, msg.getDescription(), msg.getName()));
-                return;
-            }
-
-            imageSizeAsked = len == null ? 0 : Long.valueOf(len);
-        } else {
-            // bypass the check
-            imageSizeAsked = 0;
-        }
-
+        long imageSizeAsked = getLocalImageSizeOnBackupStorage(msg);
         if ((imageSizeQuota == 0) || (imageSizeUsed + imageSizeAsked > imageSizeQuota)) {
             throw new ApiMessageInterceptionException(errf.instantiateErrorCode(IdentityErrors.QUOTA_EXCEEDING,
                     String.format("quota exceeding. The account[uuid: %s] exceeds a quota[name: %s, value: %s]",
                             msg.getSession().getAccountUuid(), ImageConstant.QUOTA_IMAGE_SIZE, imageSizeQuota)
             ));
         }
+    }
+
+
+    public long getLocalImageSizeOnBackupStorage(APIAddImageMsg msg) {
+        long imageSizeAsked = 0;
+        final String url = msg.getUrl().trim();
+        if (url.startsWith("file:///")) {
+            GetLocalFileSizeOnBackupStorageMsg gmsg = new GetLocalFileSizeOnBackupStorageMsg();
+            String bsUuid = msg.getBackupStorageUuids().get(0);
+            gmsg.setBackupStorageUuid(bsUuid);
+            gmsg.setUrl(url.split("://")[1]);
+            bus.makeTargetServiceIdByResourceUuid(gmsg, BackupStorageConstant.SERVICE_ID, bsUuid);
+            GetLocalFileSizeOnBackupStorageReply reply = (GetLocalFileSizeOnBackupStorageReply) bus.call(gmsg);
+            if (!reply.isSuccess()) {
+                logger.warn(String.format("cannot get image. The image url : %s. description: %s.name: %s",
+                        url, msg.getDescription(), msg.getName()));
+                throw new OperationFailureException(reply.getError());
+            } else {
+                imageSizeAsked = reply.getSize();
+            }
+        } else if (url.startsWith("http") || url.startsWith("https")) {
+            String len = null;
+            HttpHeaders header = restf.getRESTTemplate().headForHeaders(url);
+            try {
+                len = header.getFirst("Content-Length");
+            } catch (Exception e) {
+                logger.warn(String.format("cannot get image.  The image url : %s. description: %s.name: %s",
+                        url, msg.getDescription(), msg.getName()));
+            }
+            imageSizeAsked = len == null ? 0 : Long.valueOf(len);
+        }
+        return imageSizeAsked;
     }
 }

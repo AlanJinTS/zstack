@@ -2,6 +2,14 @@ package org.zstack.sdk;
 
 public class HybridAccountInventory  {
 
+    public java.lang.String name;
+    public void setName(java.lang.String name) {
+        this.name = name;
+    }
+    public java.lang.String getName() {
+        return this.name;
+    }
+
     public java.lang.String uuid;
     public void setUuid(java.lang.String uuid) {
         this.uuid = uuid;
@@ -34,12 +42,20 @@ public class HybridAccountInventory  {
         return this.type;
     }
 
-    public java.lang.String key;
-    public void setKey(java.lang.String key) {
-        this.key = key;
+    public java.lang.String akey;
+    public void setAkey(java.lang.String akey) {
+        this.akey = akey;
     }
-    public java.lang.String getKey() {
-        return this.key;
+    public java.lang.String getAkey() {
+        return this.akey;
+    }
+
+    public java.lang.String current;
+    public void setCurrent(java.lang.String current) {
+        this.current = current;
+    }
+    public java.lang.String getCurrent() {
+        return this.current;
     }
 
     public java.lang.String description;

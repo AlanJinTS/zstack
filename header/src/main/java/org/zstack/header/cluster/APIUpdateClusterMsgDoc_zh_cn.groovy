@@ -7,18 +7,18 @@ doc {
 
     category "cluster"
 
-    desc "更新集群"
+    desc """更新集群"""
 
     rest {
         request {
 			url "PUT /v1/clusters/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIUpdateClusterMsg.class
 
-            desc "更新集群"
+            desc """更新集群"""
             
 			params {
 

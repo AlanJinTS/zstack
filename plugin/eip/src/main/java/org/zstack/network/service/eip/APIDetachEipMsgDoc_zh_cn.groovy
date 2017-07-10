@@ -7,18 +7,18 @@ doc {
 
     category "弹性IP"
 
-    desc "解绑弹性IP"
+    desc """解绑弹性IP"""
 
     rest {
         request {
 			url "DELETE /v1/eips/{uuid}/vm-instances/nics"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIDetachEipMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -34,8 +34,8 @@ doc {
 				}
 				column {
 					name "systemTags"
- 					enclosedIn ""
- 					desc "系统标签"
+					enclosedIn ""
+					desc "系统标签"
 					location "body"
 					type "List"
 					optional true

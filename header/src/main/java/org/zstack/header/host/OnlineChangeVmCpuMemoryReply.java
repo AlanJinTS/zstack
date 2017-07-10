@@ -1,20 +1,28 @@
 package org.zstack.header.host;
 
-import org.zstack.header.configuration.InstanceOfferingInventory;
 import org.zstack.header.message.MessageReply;
 
 /**
  * Created by luchukun on 8/9/16.
  */
 public class OnlineChangeVmCpuMemoryReply extends MessageReply {
-    private InstanceOfferingInventory instanceOfferingInventory;
+    private int cpuNum;
+    private long memorySize;
 
-    public InstanceOfferingInventory getInstanceOfferingInventory() {
-        return instanceOfferingInventory;
+    public int getCpuNum() {
+        return cpuNum;
     }
 
-    public void setInstanceOfferingInventory(InstanceOfferingInventory instanceOfferingInventory) {
-        this.instanceOfferingInventory = instanceOfferingInventory;
+    public void setCpuNum(int cpuNum) {
+        this.cpuNum = cpuNum;
+    }
+
+    public long getMemorySize() {
+        return memorySize;
+    }
+
+    public void setMemorySize(long memorySize) {
+        this.memorySize = memorySize;
     }
 }
 

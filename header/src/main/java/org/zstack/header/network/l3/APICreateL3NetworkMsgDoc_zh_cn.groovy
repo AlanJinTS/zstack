@@ -7,18 +7,18 @@ doc {
 
     category "三层网络"
 
-    desc "创建三层网络"
+    desc """创建三层网络"""
 
     rest {
         request {
 			url "POST /v1/l3-networks"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APICreateL3NetworkMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -94,8 +94,8 @@ doc {
 				}
 				column {
 					name "systemTags"
- 					enclosedIn ""
- 					desc "系统标签"
+					enclosedIn ""
+					desc "系统标签"
 					location "body"
 					type "List"
 					optional true

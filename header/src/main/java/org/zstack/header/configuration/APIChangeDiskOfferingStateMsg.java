@@ -19,7 +19,6 @@ import org.zstack.header.rest.RestRequest;
         path = "/disk-offerings/{uuid}/actions",
         isAction = true,
         method = HttpMethod.PUT,
-        parameterName = "params",
         responseClass = APIChangeDiskOfferingStateEvent.class
 )
 public class APIChangeDiskOfferingStateMsg extends APIMessage implements DiskOfferingMessage {
@@ -52,7 +51,7 @@ public class APIChangeDiskOfferingStateMsg extends APIMessage implements DiskOff
     public static APIChangeDiskOfferingStateMsg __example__() {
         APIChangeDiskOfferingStateMsg msg = new APIChangeDiskOfferingStateMsg();
         msg.setUuid(uuid());
-        msg.setStateEvent("enable");
+        msg.setStateEvent(InstanceOfferingStateEvent.enable.toString());
 
         return msg;
     }

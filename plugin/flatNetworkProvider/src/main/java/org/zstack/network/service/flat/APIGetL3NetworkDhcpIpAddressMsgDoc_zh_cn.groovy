@@ -7,18 +7,18 @@ doc {
 
     category "三层网络"
 
-    desc "获取网络DHCP服务所用地址"
+    desc """获取网络DHCP服务所用地址"""
 
     rest {
         request {
 			url "GET /v1/l3-networks/{l3NetworkUuid/dhcp-ip"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIGetL3NetworkDhcpIpAddressMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -34,8 +34,8 @@ doc {
 				}
 				column {
 					name "systemTags"
- 					enclosedIn ""
- 					desc "系统标签"
+					enclosedIn ""
+					desc "系统标签"
 					location "query"
 					type "List"
 					optional true

@@ -3,11 +3,12 @@ package org.zstack.compute.vm;
 import org.springframework.beans.factory.annotation.Autowire;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Configurable;
+import org.springframework.transaction.annotation.Transactional;
 import org.zstack.core.cloudbus.CloudBus;
 import org.zstack.core.cloudbus.CloudBusCallBack;
 import org.zstack.core.db.DatabaseFacade;
+import org.zstack.core.db.Q;
 import org.zstack.core.errorcode.ErrorFacade;
-import org.zstack.core.logging.Log;
 import org.zstack.header.allocator.*;
 import org.zstack.header.configuration.DiskOfferingInventory;
 import org.zstack.header.configuration.DiskOfferingVO;
@@ -20,6 +21,9 @@ import org.zstack.header.image.ImageConstant.ImageMediaType;
 import org.zstack.header.image.ImageInventory;
 import org.zstack.header.message.MessageReply;
 import org.zstack.header.network.l3.L3NetworkInventory;
+import org.zstack.header.storage.primary.PrimaryStorageHostRefVO;
+import org.zstack.header.storage.primary.PrimaryStorageHostRefVO_;
+import org.zstack.header.storage.primary.PrimaryStorageHostStatus;
 import org.zstack.header.vm.VmInstanceConstant;
 import org.zstack.header.vm.VmInstanceConstant.VmOperation;
 import org.zstack.header.vm.VmInstanceSpec;
@@ -51,6 +55,14 @@ public class VmAllocateHostFlow implements Flow {
         return size;
     }
 
+    @Transactional
+    private List<String> getAvoidHost(VmInstanceSpec spec){
+        return Q.New(PrimaryStorageHostRefVO.class).select(PrimaryStorageHostRefVO_.hostUuid)
+                .eq(PrimaryStorageHostRefVO_.primaryStorageUuid, spec.getRequiredPrimaryStorageUuidForRootVolume())
+                .eq(PrimaryStorageHostRefVO_.status, PrimaryStorageHostStatus.Disconnected)
+                .listValues();
+    }
+
     private AllocateHostMsg prepareMsg(Map<String, Object> ctx) {
         VmInstanceSpec spec = (VmInstanceSpec) ctx.get(VmInstanceConstant.Params.VmInstanceSpec.toString());
 
@@ -68,6 +80,7 @@ public class VmAllocateHostFlow implements Flow {
         }
         diskSize += getTotalDataDiskSize(spec);
         diskOfferings.addAll(spec.getDataDiskOfferings());
+        msg.setAvoidHostUuids(getAvoidHost(spec));
         msg.setDiskOfferings(diskOfferings);
         msg.setDiskSize(diskSize);
         msg.setCpuCapacity(spec.getVmInventory().getCpuNum());
@@ -95,6 +108,9 @@ public class VmAllocateHostFlow implements Flow {
         } else {
             msg.setAllocatorStrategy(spec.getVmInventory().getAllocatorStrategy());
         }
+        if (spec.getRequiredPrimaryStorageUuidForRootVolume() != null) {
+            msg.setRequiredPrimaryStorageUuid(spec.getRequiredPrimaryStorageUuidForRootVolume());
+        }
         msg.setServiceId(bus.makeLocalServiceId(HostAllocatorConstant.SERVICE_ID));
         msg.setTimeout(TimeUnit.MINUTES.toMillis(60));
         msg.setVmInstance(spec.getVmInventory());
@@ -113,7 +129,6 @@ public class VmAllocateHostFlow implements Flow {
         }
 
         AllocateHostMsg msg = this.prepareMsg(data);
-        new Log(spec.getVmInventory().getUuid()).log(VmLabels.VM_START_ALLOCATE_HOST);
 
         bus.send(msg, new CloudBusCallBack(chain) {
             @Override

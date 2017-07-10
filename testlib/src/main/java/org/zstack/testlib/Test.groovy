@@ -1,7 +1,9 @@
 package org.zstack.testlib
 
+import okhttp3.OkHttpClient
 import org.zstack.core.Platform
 import org.zstack.core.cloudbus.CloudBus
+import org.zstack.core.cloudbus.CloudBusImpl2
 import org.zstack.core.componentloader.ComponentLoader
 import org.zstack.core.db.DatabaseFacade
 import org.zstack.header.AbstractService
@@ -10,8 +12,6 @@ import org.zstack.header.identity.AccountConstant
 import org.zstack.header.message.AbstractBeforeSendMessageInterceptor
 import org.zstack.header.message.Event
 import org.zstack.header.message.Message
-import org.zstack.sdk.CreateZoneAction
-import org.zstack.sdk.DeleteZoneAction
 import org.zstack.sdk.SessionInventory
 import org.zstack.sdk.ZSClient
 import org.zstack.utils.ShellUtils
@@ -23,6 +23,8 @@ import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.logging.Level
+import java.util.logging.Logger
 
 /**
  * Created by xing5 on 2017/2/12.
@@ -33,7 +35,7 @@ abstract class Test implements ApiHelper {
     static Object deployer
     static Map<String, String> apiPaths = new ConcurrentHashMap<>()
 
-
+    private final long DEFAULT_MESSAGE_TIMEOUT = TimeUnit.SECONDS.toMillis(25)
     private final int PHASE_NONE = 0
     private final int PHASE_SETUP = 1
     private final int PHASE_ENV = 2
@@ -51,6 +53,7 @@ abstract class Test implements ApiHelper {
 
     Test() {
         _springSpec = new SpringSpec()
+        Logger.getLogger(OkHttpClient.class.getName()).setLevel(Level.FINE)
     }
 
     static EnvSpec makeEnv(@DelegatesTo(strategy=Closure.DELEGATE_FIRST, value=EnvSpec.class) Closure c) {
@@ -140,6 +143,9 @@ abstract class Test implements ApiHelper {
 
     private void hijackService() {
         CloudBus bus = bean(CloudBus.class)
+        if(bus instanceof CloudBusImpl2){
+            ((CloudBusImpl2)bus).setDEFAULT_MESSAGE_TIMEOUT(DEFAULT_MESSAGE_TIMEOUT)
+        }
 
         def serviceId = "test.hijack.service"
         def service = new AbstractService() {
@@ -150,15 +156,30 @@ abstract class Test implements ApiHelper {
                 }
 
                 try {
-                    def entry = currentEnvSpec.messageHandlers.find { k, _ -> k.isAssignableFrom(msg.getClass()) }
-                    if (entry != null) {
-                        Tuple t = entry.value
-                        Closure handler = t[1]
-                        if (handler.maximumNumberOfParameters <= 1) {
-                            handler(msg)
-                        } else {
-                            handler(msg, bus)
+                    def all = currentEnvSpec.messageHandlers.findAll { k, _ -> k.isAssignableFrom(msg.getClass()) }
+
+                    boolean handled = false
+                    all.values().each { tuples ->
+                        tuples.each {
+                            Closure cond = it[0]
+                            Closure handler = it[1]
+
+                            if (cond != null && !cond(msg)) {
+                                return
+                            }
+
+                            handled = true
+                            if (handler.maximumNumberOfParameters <= 1) {
+                                handler(msg)
+                            } else {
+                                handler(msg, bus)
+                            }
                         }
+                    }
+
+                    if (!handled) {
+                        bus.replyErrorByMessageType(msg, "a test case installed message handler for this message, however," +
+                                " its condition closure decides not to handle this message. Check your test case")
                     }
                 } catch (Exception ex) {
                     bus.replyErrorByMessageType(msg, ex)
@@ -190,19 +211,10 @@ abstract class Test implements ApiHelper {
                     return
                 }
 
-                Tuple t = currentEnvSpec.messageHandlers[msg.class]
-                if (t == null) {
-                    return
+                def has = currentEnvSpec.messageHandlers.find { k, _ -> k.isAssignableFrom(msg.getClass()) } != null
+                if (has) {
+                    bus.makeLocalServiceId(msg, serviceId)
                 }
-
-                Closure condition = t[0]
-
-                if (condition != null && !condition(msg)) {
-                    // the condition closure tells us not to hijack this message
-                    return
-                }
-
-                bus.makeLocalServiceId(msg, serviceId)
             }
         })
     }
@@ -347,7 +359,7 @@ abstract class Test implements ApiHelper {
         def cases = new File([dir.absolutePath, "cases"].join("/"))
         cases.write(caseTypes.collect {it.name}.join("\n"))
 
-        if (System.hasProperty("list")) {
+        if (System.getProperty("list") != null) {
             return
         }
 
@@ -367,33 +379,57 @@ abstract class Test implements ApiHelper {
         for (SubCaseResult r in allCases) {
             def c = r.caseType.newInstance() as Case
 
+            String caseLogStartLine = "case log of ${c.class} starts here"
+            String caseLogEndLine = "case log of ${c.class} ends here"
+
             logger.info("starts running a sub case[${c.class}] of suite[${this.class}]")
             new File([dir.absolutePath, "current-case"].join("/")).write("${c.class}")
 
             try {
                 CURRENT_SUB_CASE = c
+                c.metaClass.collectErrorLog = {
+                    File failureLogDir = new File([dir.absolutePath, "failureLogs", r.caseType.name.replace(".", "_")].join("/"))
+                    failureLogDir.mkdirs()
+                    File failureLog = new File([failureLogDir.absolutePath, "case.log"].join("/"))
+
+                    File mgmtLogPath = new File([System.getProperty("user.dir"), "management-server.log"].join("/"))
+
+                    ShellUtils.run("""\
+start=`grep -nr "$caseLogStartLine" ${mgmtLogPath.absolutePath} | grep -v ShellUtils | gawk '{print \$1}' FS=":"`
+tail -n +\$start ${mgmtLogPath.absolutePath} > ${failureLog.absolutePath}
+
+mysqldump -u root zstack > ${failureLogDir.absolutePath}/dbdump.sql
+""", false)
+                }
 
                 beforeRunSubCase()
+
+                logger.info(caseLogStartLine)
+
                 c.run()
 
                 r.success = true
                 logger.info("a sub case[${c.class}] of suite[${this.class}] completes without any error")
             } catch (StopTestSuiteException e) {
                 hasFailure = true
+                r.success = false
+                r.error = e.message
+
+                logger.error("a sub case[${c.class}] of suite[${this.class}] throws StopTestSuiteException, ${e.message}", e)
                 break
             } catch (Throwable t) {
                 hasFailure = true
-
                 r.success = false
                 r.error = t.message
 
-                logger.error("a sub case [${c.class}] of suite[${this.class}] fails, ${t.message}")
+                logger.error("a sub case[${c.class}] of suite[${this.class}] fails, ${t.message}", t)
             } finally {
                 def fname = c.class.name.replace(".", "_") + "." + (r.success ? "success" : "failure")
                 def rfile = new File([dir.absolutePath, fname].join("/"))
                 rfile.write(JSONObjectUtil.toJsonString(r))
 
-                logger.info("write test result of a sub case [${c.class}] of suite[${this.class}] to $fname")
+                logger.info("write test result of a sub case[${c.class}] of suite[${this.class}] to $fname")
+                logger.info(caseLogEndLine)
             }
         }
 
@@ -422,6 +458,8 @@ abstract class Test implements ApiHelper {
                 "passRate": ((float)success / (float)caseTypes.size()) * 100
         ]))
 
+        new File([dir.absolutePath, "done"].join("/")).createNewFile()
+
         if (hasFailure) {
             // some cases failed, exit with code 1
             System.exit(1)
@@ -439,7 +477,7 @@ abstract class Test implements ApiHelper {
         } as SessionInventory
     }
 
-    private boolean getRetryReturnValue(ret, boolean throwError=false) {
+    private static boolean getRetryReturnValue(ret, boolean throwError = false) {
         boolean judge
 
         if (ret instanceof Closure) {
@@ -460,7 +498,8 @@ abstract class Test implements ApiHelper {
         return judge
     }
 
-    protected boolean retryInSecs(int total=15, int interval=1, Closure c) {
+    @Deprecated
+    protected static boolean retryInSecs3(int total = 15, int interval = 1, Closure c) {
         int count = 0
 
         def ret = null
@@ -479,7 +518,35 @@ abstract class Test implements ApiHelper {
         return getRetryReturnValue(ret, true)
     }
 
-    protected boolean retryInMillis(int total, int interval=500, Closure c) {
+    protected boolean retryInSecs(int total = 8, int interval = 1, Closure c) {
+        int count = 0
+        def ret = false
+
+        while (count < total) {
+            try {
+                def r = c()
+                ret = r == null || (r != null && r instanceof Boolean && r)
+            } catch (StopTestSuiteException e) {
+                throw e
+            } catch (Throwable t) {
+                logger.debug("[retryInSecs:${count + 1}/${total}]", t)
+                if (total - count == 1) {
+                    throw t
+                }
+            }
+
+            if (ret) {
+                return ret
+            }
+            TimeUnit.SECONDS.sleep(interval)
+            count += interval
+        }
+
+        return false
+    }
+
+    @Deprecated
+    protected static boolean retryInMillis(int total, int interval = 500, Closure c) {
         int count = 0
 
         def ret = null
@@ -496,5 +563,55 @@ abstract class Test implements ApiHelper {
         }
 
         return getRetryReturnValue(ret, true)
+    }
+
+    static class ExpectedException extends Exception {
+        ExpectedException() {
+        }
+
+        ExpectedException(String var1) {
+            super(var1)
+        }
+
+        ExpectedException(String var1, Throwable var2) {
+            super(var1, var2)
+        }
+
+        ExpectedException(Throwable var1) {
+            super(var1)
+        }
+
+        ExpectedException(String var1, Throwable var2, boolean var3, boolean var4) {
+            super(var1, var2, var3, var4)
+        }
+    }
+
+    protected static void expect(exceptions, Closure c) {
+        List<Class> lst = []
+        if (exceptions instanceof Collection) {
+            lst.addAll(exceptions)
+        } else if (exceptions instanceof Class && Throwable.class.isAssignableFrom(exceptions)) {
+            lst.add(exceptions)
+        } else {
+            throw new Exception("the first argument must be a Throwable or a collection of Throwable, but got a ${exceptions.class.name}")
+        }
+
+        try {
+            c()
+            throw new ExpectedException("expect exceptions[${lst.collect { it.name }}] happen, but nothing happens")
+        } catch (Throwable t) {
+            if (t instanceof ExpectedException) {
+                throw t
+            }
+
+            for (Class tt : lst) {
+                if (tt.isAssignableFrom(t.class)) {
+                    return
+                }
+            }
+
+            throw new Exception("expected to get a Throwable of ${lst.collect { it.name }} but got ${t.class.name}")
+
+        }
     }
 }

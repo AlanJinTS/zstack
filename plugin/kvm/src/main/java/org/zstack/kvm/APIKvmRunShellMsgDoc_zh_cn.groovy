@@ -7,18 +7,18 @@ doc {
 
     category "host"
 
-    desc "KVM运行命令"
+    desc """KVM运行命令"""
 
     rest {
         request {
 			url "PUT /v1/hosts/kvm/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIKvmRunShellMsg.class
 
-            desc "KVM运行命令"
+            desc """KVM运行命令"""
             
 			params {
 

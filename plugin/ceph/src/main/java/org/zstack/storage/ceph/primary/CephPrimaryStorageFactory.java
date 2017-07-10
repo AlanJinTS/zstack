@@ -25,6 +25,7 @@ import org.zstack.header.storage.backup.BackupStorageConstant;
 import org.zstack.header.storage.backup.DeleteBitsOnBackupStorageMsg;
 import org.zstack.header.storage.primary.*;
 import org.zstack.header.storage.snapshot.CreateTemplateFromVolumeSnapshotExtensionPoint;
+import org.zstack.header.storage.snapshot.VolumeSnapshotInventory;
 import org.zstack.header.vm.VmInstanceInventory;
 import org.zstack.header.vm.VmInstanceSpec;
 import org.zstack.header.volume.SyncVolumeSizeMsg;
@@ -36,16 +37,14 @@ import org.zstack.kvm.*;
 import org.zstack.storage.ceph.*;
 import org.zstack.storage.ceph.primary.KVMCephVolumeTO.MonInfo;
 import org.zstack.storage.primary.PrimaryStorageCapacityUpdater;
-import org.zstack.tag.SystemTag;
+import org.zstack.storage.snapshot.PostMarkRootVolumeAsSnapshotExtension;
 import org.zstack.tag.SystemTagCreator;
 import org.zstack.utils.CollectionUtils;
 import org.zstack.utils.DebugUtils;
 import org.zstack.utils.Utils;
 import org.zstack.utils.function.Function;
 import org.zstack.utils.logging.CLogger;
-
 import static org.zstack.core.Platform.operr;
-
 import javax.persistence.Tuple;
 import javax.persistence.TypedQuery;
 import java.util.ArrayList;
@@ -63,7 +62,7 @@ import static org.zstack.utils.CollectionDSL.map;
  */
 public class CephPrimaryStorageFactory implements PrimaryStorageFactory, CephCapacityUpdateExtensionPoint, KVMStartVmExtensionPoint,
         KVMAttachVolumeExtensionPoint, KVMDetachVolumeExtensionPoint, CreateTemplateFromVolumeSnapshotExtensionPoint,
-        KvmSetupSelfFencerExtensionPoint, KVMPreAttachIsoExtensionPoint, Component {
+        KvmSetupSelfFencerExtensionPoint, KVMPreAttachIsoExtensionPoint, Component, PostMarkRootVolumeAsSnapshotExtension {
     private static final CLogger logger = Utils.getLogger(CephPrimaryStorageFactory.class);
 
     public static final PrimaryStorageType type = new PrimaryStorageType(CephConstants.CEPH_PRIMARY_STORAGE_TYPE);
@@ -335,6 +334,12 @@ public class CephPrimaryStorageFactory implements PrimaryStorageFactory, CephCap
 
         cmd.setDataVolumes(dtos);
         cmd.setBootIso(convertIsoToCephIfNeeded(cmd.getBootIso()));
+
+        CephPrimaryStorageVO cephPrimaryStorageVO = dbf.findByUuid(spec.getDestRootVolume().getPrimaryStorageUuid(), CephPrimaryStorageVO.class);
+        if(cephPrimaryStorageVO != null){
+            cmd.getAddons().put(CephConstants.CEPH_SCECRET_KEY, cephPrimaryStorageVO.getUserKey());
+            cmd.getAddons().put(CephConstants.CEPH_SECRECT_UUID, CephSystemTags.KVM_SECRET_UUID.getTokenByResourceUuid(cephPrimaryStorageVO.getUuid(), CephSystemTags.KVM_SECRET_UUID_TOKEN));
+        }
     }
 
     @Override
@@ -494,5 +499,10 @@ public class CephPrimaryStorageFactory implements PrimaryStorageFactory, CephCap
     @Override
     public void preAttachIsoExtensionPoint(KVMHostInventory host, AttachIsoCmd cmd) {
         cmd.iso = convertIsoToCephIfNeeded(cmd.iso);
+    }
+
+    @Override
+    public void afterMarkRootVolumeAsSnapshot(VolumeSnapshotInventory snapshot) {
+
     }
 }

@@ -7,18 +7,18 @@ doc {
 
     category "负载均衡"
 
-    desc "刷新负载均衡器"
+    desc """刷新负载均衡器"""
 
     rest {
         request {
 			url "PUT /v1/load-balancers/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIRefreshLoadBalancerMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

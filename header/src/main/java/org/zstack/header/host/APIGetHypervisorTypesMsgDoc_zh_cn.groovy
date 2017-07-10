@@ -7,18 +7,18 @@ doc {
 
     category "host"
 
-    desc "获取云主机虚拟化技术类型"
+    desc """获取云主机虚拟化技术类型"""
 
     rest {
         request {
 			url "GET /v1/hosts/hypervisor-types"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIGetHypervisorTypesMsg.class
 
-            desc "获取云主机的虚拟化技术类型"
+            desc """获取云主机的虚拟化技术类型"""
             
 			params {
 

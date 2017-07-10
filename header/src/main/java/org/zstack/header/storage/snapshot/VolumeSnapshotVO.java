@@ -1,5 +1,6 @@
 package org.zstack.header.storage.snapshot;
 
+import org.zstack.header.vo.BaseResource;
 import org.zstack.header.vo.EO;
 import org.zstack.header.vo.NoView;
 
@@ -11,8 +12,8 @@ import java.util.List;
  */
 @Entity
 @Table
-@Inheritance(strategy = InheritanceType.JOINED)
 @EO(EOClazz = VolumeSnapshotEO.class)
+@BaseResource
 public class VolumeSnapshotVO extends VolumeSnapshotAO {
     @OneToMany(fetch = FetchType.EAGER)
     @JoinColumn(name = "volumeSnapshotUuid", insertable = false, updatable = false)

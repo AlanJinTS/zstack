@@ -8,7 +8,6 @@ import org.zstack.header.message.OverriddenApiParams;
 import org.zstack.header.network.l2.APICreateL2NetworkMsg;
 import org.zstack.header.rest.RestRequest;
 
-@Action(category = VxlanNetworkPoolConstant.ACTION_CATEGORY)
 @OverriddenApiParams({
         @OverriddenApiParam(field = "physicalInterface", param = @APIParam(maxLength = 1024, required = false))
 })
@@ -23,11 +22,6 @@ public class APICreateL2VxlanNetworkPoolMsg extends APICreateL2NetworkMsg {
     @Override
     public String getType() {
         return VxlanNetworkPoolConstant.VXLAN_NETWORK_POOL_TYPE;
-    }
-
-    @Override
-    public String getPhysicalInterface() {
-        return "No use";
     }
 
     public static APICreateL2VxlanNetworkPoolMsg __example__() {

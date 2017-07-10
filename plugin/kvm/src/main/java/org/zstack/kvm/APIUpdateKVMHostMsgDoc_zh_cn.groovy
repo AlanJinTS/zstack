@@ -7,18 +7,18 @@ doc {
 
     category "host"
 
-    desc "更新KVM机信息"
+    desc """更新KVM机信息"""
 
     rest {
         request {
 			url "PUT /v1/hosts/kvm/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIUpdateKVMHostMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

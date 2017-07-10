@@ -9,8 +9,7 @@ import org.zstack.core.cascade.CascadeFacade;
 import org.zstack.core.cloudbus.CloudBus;
 import org.zstack.core.cloudbus.CloudBusCallBack;
 import org.zstack.core.componentloader.PluginRegistry;
-import org.zstack.core.db.DatabaseFacade;
-import org.zstack.core.db.SimpleQuery;
+import org.zstack.core.db.*;
 import org.zstack.core.db.SimpleQuery.Op;
 import org.zstack.core.errorcode.ErrorFacade;
 import org.zstack.core.workflow.*;
@@ -96,19 +95,29 @@ public class L3BasicNetwork implements L3Network {
     }
 
     private IpRangeInventory createIpRange(APICreateMessage msg, IpRangeInventory ipr) {
-        IpRangeVO vo = new IpRangeVO();
-        vo.setUuid(ipr.getUuid() == null ? Platform.getUuid() : ipr.getUuid());
-        vo.setDescription(ipr.getDescription());
-        vo.setEndIp(ipr.getEndIp());
-        vo.setGateway(ipr.getGateway());
-        vo.setL3NetworkUuid(ipr.getL3NetworkUuid());
-        vo.setName(ipr.getName());
-        vo.setNetmask(ipr.getNetmask());
-        vo.setStartIp(ipr.getStartIp());
-        vo.setNetworkCidr(ipr.getNetworkCidr());
-        vo = dbf.persistAndRefresh(vo);
+        IpRangeVO vo = new SQLBatchWithReturn<IpRangeVO>() {
+            @Override
+            protected IpRangeVO scripts() {
+                IpRangeVO vo = new IpRangeVO();
+                vo.setUuid(ipr.getUuid() == null ? Platform.getUuid() : ipr.getUuid());
+                vo.setDescription(ipr.getDescription());
+                vo.setEndIp(ipr.getEndIp());
+                vo.setGateway(ipr.getGateway());
+                vo.setL3NetworkUuid(ipr.getL3NetworkUuid());
+                vo.setName(ipr.getName());
+                vo.setNetmask(ipr.getNetmask());
+                vo.setStartIp(ipr.getStartIp());
+                vo.setNetworkCidr(ipr.getNetworkCidr());
+                dbf.getEntityManager().persist(vo);
+                dbf.getEntityManager().flush();
+                dbf.getEntityManager().refresh(vo);
 
-        acntMgr.createAccountResourceRef(msg.getSession().getAccountUuid(), vo.getUuid(), IpRangeVO.class);
+                acntMgr.createAccountResourceRef(msg.getSession().getAccountUuid(), vo.getUuid(), IpRangeVO.class);
+
+                return vo;
+            }
+        }.execute();
+
         tagMgr.createTagsFromAPICreateMessage(msg, vo.getUuid(), IpRangeVO.class.getSimpleName());
 
         IpRangeInventory inv = IpRangeInventory.valueOf(vo);
@@ -203,10 +212,12 @@ public class L3BasicNetwork implements L3Network {
 
     private void handle(ReturnIpMsg msg) {
         ReturnIpReply reply = new ReturnIpReply();
-        dbf.removeByPrimaryKey(msg.getUsedIpUuid(), UsedIpVO.class);
+        SQL.New(UsedIpVO.class).eq(UsedIpVO_.uuid, msg.getUsedIpUuid()).hardDelete();
         logger.debug(String.format("Successfully released used ip[%s]", msg.getUsedIpUuid()));
         bus.reply(msg, reply);
     }
+
+
 
     private void handle(AllocateIpMsg msg) {
         IpAllocatorType strategyType = msg.getAllocatorStrategy() == null ? RandomIpAllocatorStrategy.type : IpAllocatorType.valueOf(msg.getAllocatorStrategy());
@@ -214,7 +225,7 @@ public class L3BasicNetwork implements L3Network {
         AllocateIpReply reply = new AllocateIpReply();
         UsedIpInventory ip = ias.allocateIp(msg);
         if (ip == null) {
-            reply.setError(errf.instantiateErrorCode(L3Errors.ALLOCATE_IP_ERROR, String.format("IP allocator strategy[%s] returns nothing, because no ip is available in this l3Network[name:%s, uuid:%s]", strategyType, self.getName(), self.getUuid())));
+            reply.setError(errf.instantiateErrorCode(L3Errors.ALLOCATE_IP_ERROR, String.format("IP allocator strategy[%s] returns nothing, because no ip is available in this l3Network[name:%s, uuid:%s]. maybe some vm already has this IP [ip:%s]", strategyType, self.getName(), self.getUuid(),msg.getRequiredIp())));
         } else {
             logger.debug(String.format("Ip allocator strategy[%s] successfully allocates an ip[%s]", strategyType, printer.print(ip)));
             reply.setIpInventory(ip);
@@ -591,7 +602,7 @@ public class L3BasicNetwork implements L3Network {
     	    }
     		logger.debug(String.format("successfully attached network service provider[uuid:%s] to l3network[uuid:%s, name:%s] with services%s", e.getKey(), self.getUuid(), self.getName(), e.getValue()));
     	}
-    	
+
     	self = dbf.reload(self);
     	APIAttachNetworkServiceToL3NetworkEvent evt = new APIAttachNetworkServiceToL3NetworkEvent(msg.getId());
     	evt.setInventory(L3NetworkInventory.valueOf(self));

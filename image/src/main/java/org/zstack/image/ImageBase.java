@@ -16,6 +16,7 @@ import org.zstack.core.db.SQLBatch;
 import org.zstack.core.db.SimpleQuery;
 import org.zstack.core.db.SimpleQuery.Op;
 import org.zstack.core.errorcode.ErrorFacade;
+import org.zstack.core.notification.N;
 import org.zstack.core.workflow.FlowChainBuilder;
 import org.zstack.header.core.Completion;
 import org.zstack.header.core.NoErrorCompletion;
@@ -25,6 +26,10 @@ import org.zstack.header.core.workflow.*;
 import org.zstack.header.errorcode.ErrorCode;
 import org.zstack.header.errorcode.OperationFailureException;
 import org.zstack.header.errorcode.SysErrors;
+import org.zstack.header.identity.AccountResourceRefVO;
+import org.zstack.header.identity.AccountResourceRefVO_;
+import org.zstack.header.identity.SharedResourceVO;
+import org.zstack.header.identity.SharedResourceVO_;
 import org.zstack.header.image.*;
 import org.zstack.header.image.ImageConstant.ImageMediaType;
 import org.zstack.header.image.ImageDeletionPolicyManager.ImageDeletionPolicy;
@@ -240,15 +245,8 @@ public class ImageBase implements Image {
 
                         if (count == 0) {
                             // the image is expunged on all backup storage
-                            //
-                            // Our trigger for ImageEO in AccoutResourceRefVO is triggered
-                            // by the 'UPDATE' action.  We can not directly use a 'DELETE'
-                            // expression here.
-                            sql("update ImageEO set status = :status, deleted = :deleted where uuid = :uuid")
-                                    .param("status", ImageStatus.Deleted)
-                                    .param("deleted", new Timestamp(new Date().getTime()).toString())
-                                    .param("uuid", msg.getImageUuid())
-                                    .execute();
+                            sql(ImageVO.class).eq(ImageVO_.uuid, msg.getImageUuid()).hardDelete();
+                            sql(SharedResourceVO.class).eq(SharedResourceVO_.resourceUuid, msg.getImageUuid()).delete();
 
                             logger.debug(String.format("the image[uuid:%s, name:%s] has been expunged on all backup storage, remove it from database",
                                     self.getUuid(), self.getName()));
@@ -270,22 +268,10 @@ public class ImageBase implements Image {
             @Override
             public void run(MessageReply reply) {
                 if (!reply.isSuccess()) {
-                    //TODO
-                    logger.warn(String.format("failed to return capacity[%s] to the backup storage[uuid:%s]", size, bsUuid));
+                    N.New(BackupStorageVO.class, bsUuid).warn_("failed to return capacity[%s] to the backup storage[uuid:%s], %s", size, bsUuid, reply.getError());
                 }
             }
         });
-    }
-
-    private static void hardDeleteImage(final String imageUuid) {
-        // Our trigger for ImageEO in AccoutResourceRefVO is triggered
-        // by the 'UPDATE' action.  We can not directly use a 'DELETE'
-        // expression here.
-        SQL.New("update ImageEO set status = :status, deleted = :deleted where uuid = :uuid")
-                .param("status", ImageStatus.Deleted)
-                .param("deleted", new Timestamp(new Date().getTime()).toString())
-                .param("uuid", imageUuid)
-                .execute();
     }
 
     private void handle(final ImageDeletionMsg msg) {
@@ -299,18 +285,12 @@ public class ImageBase implements Image {
             new SQLBatch() {
                 @Override
                 protected void scripts() {
-                    hardDeleteImage(self.getUuid());
-
-                    SQL.New("delete from ImageBackupStorageRefVO where imageUuid = :uuid")
-                            .param("uuid", self.getUuid())
-                            .execute();
-
-                    // in case 'recover' is called with an incomplete image
-                    dbf.hardDeleteCollectionSelectedBySQL(
-                            String.format("select uuid from ImageEO where uuid = '%s'", self.getUuid()),
-                            ImageVO.class);
+                    // in case 'recover api' called for an incomplete image
+                    sql(ImageBackupStorageRefVO.class).eq(ImageBackupStorageRefVO_.imageUuid, self.getUuid()).hardDelete();
+                    sql(ImageVO.class).eq(ImageVO_.uuid, self.getUuid()).hardDelete();
                 }
             }.execute();
+
             bus.reply(msg, reply);
             return;
         }
@@ -380,38 +360,40 @@ public class ImageBase implements Image {
         chain.done(new FlowDoneHandler(msg) {
             @Override
             public void handle(Map data) {
-                self = dbf.reload(self);
-                if (self.getBackupStorageRefs().isEmpty()) {
-                    new Callable<Void>() {
-                        @Override
-                        @Transactional
-                        public Void call() {
-                            hardDeleteImage(self.getUuid());
-                            for (Object e : refs) {
-                                dbf.getEntityManager().merge(e);
-                            }
-                            return null;
+                new SQLBatch() {
+                    @Override
+                    protected void scripts() {
+                        for (Object ref : refs) {
+                            // update ref status if there is any
+                            dbf.getEntityManager().merge(ref);
                         }
-                    }.call();
 
-                    if (deletionPolicy == ImageDeletionPolicy.DeleteReference) {
-                        logger.debug(String.format("successfully directly deleted the image[uuid:%s, name:%s] from the database," +
-                                " as the policy is DeleteReference, it's still on the physical backup storage", self.getUuid(), self.getName()));
-                    } else {
-                        logger.debug(String.format("successfully directly deleted the image[uuid:%s, name:%s]", self.getUuid(), self.getName()));
-                    }
-                } else {
-                    if (refs.size() == self.getBackupStorageRefs().size()) {
-                        // To make the ImageStatus always consistent with that from RefVO.
-                        self.setStatus(ImageStatus.Deleted);
-                        refs.add(self);
-                        dbf.updateCollection(refs);
+                        dbf.getEntityManager().flush();
 
-                        self = dbf.reload(self);
-                        logger.debug(String.format("successfully deleted the image[uuid:%s, name:%s] with deletion policy[%s]",
-                                self.getUuid(), self.getName(), deletionPolicy));
+                        self = dbf.getEntityManager().find(ImageVO.class, self.getUuid());
+
+                        if (self.getBackupStorageRefs().isEmpty()) {
+                            // the image is directly deleted from all backup storage
+                            // hard delete it
+                            sql(ImageVO.class).eq(ImageVO_.uuid, self.getUuid()).delete();
+
+                            if (deletionPolicy == ImageDeletionPolicy.DeleteReference) {
+                                logger.debug(String.format("successfully directly deleted the image[uuid:%s, name:%s] from the database," +
+                                        " as the policy is DeleteReference, it's still on the physical backup storage", self.getUuid(), self.getName()));
+                            } else {
+                                logger.debug(String.format("successfully directly deleted the image[uuid:%s, name:%s]", self.getUuid(), self.getName()));
+                            }
+                        } else {
+                            if (self.getBackupStorageRefs().stream().noneMatch(r -> r.getStatus() != ImageStatus.Deleted)) {
+                                self.setStatus(ImageStatus.Deleted);
+                                dbf.getEntityManager().merge(self);
+
+                                logger.debug(String.format("successfully deleted the image[uuid:%s, name:%s] with deletion policy[%s]",
+                                        self.getUuid(), self.getName(), deletionPolicy));
+                            }
+                        }
                     }
-                }
+                }.execute();
 
                 bus.reply(msg, reply);
             }

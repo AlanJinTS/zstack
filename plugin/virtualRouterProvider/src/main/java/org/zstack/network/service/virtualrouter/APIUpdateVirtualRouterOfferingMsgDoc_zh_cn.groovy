@@ -7,24 +7,24 @@ doc {
 
     category "虚拟路由器"
 
-    desc "更新虚拟路由器规格"
+    desc """更新虚拟路由器规格"""
 
     rest {
         request {
 			url "PUT /v1/instance-offerings/virtual-routers/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIUpdateVirtualRouterOfferingMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
 				column {
 					name "isDefault"
-					enclosedIn "params"
+					enclosedIn "updateVirtualRouterOffering"
 					desc "默认"
 					location "body"
 					type "Boolean"
@@ -34,7 +34,7 @@ doc {
 				}
 				column {
 					name "imageUuid"
-					enclosedIn "params"
+					enclosedIn "updateVirtualRouterOffering"
 					desc "镜像UUID"
 					location "body"
 					type "String"
@@ -44,7 +44,7 @@ doc {
 				}
 				column {
 					name "uuid"
-					enclosedIn "params"
+					enclosedIn "updateVirtualRouterOffering"
 					desc "资源的UUID，唯一标示该资源"
 					location "url"
 					type "String"
@@ -54,7 +54,7 @@ doc {
 				}
 				column {
 					name "name"
-					enclosedIn "params"
+					enclosedIn "updateVirtualRouterOffering"
 					desc "资源名称"
 					location "body"
 					type "String"
@@ -64,7 +64,7 @@ doc {
 				}
 				column {
 					name "description"
-					enclosedIn "params"
+					enclosedIn "updateVirtualRouterOffering"
 					desc "资源的详细描述"
 					location "body"
 					type "String"

@@ -7,18 +7,18 @@ doc {
 
     category "弹性IP"
 
-    desc "更改弹性IP状态"
+    desc """更改弹性IP状态"""
 
     rest {
         request {
 			url "PUT /v1/eips/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIChangeEipStateMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -44,8 +44,8 @@ doc {
 				}
 				column {
 					name "systemTags"
- 					enclosedIn ""
- 					desc "系统标签"
+					enclosedIn ""
+					desc "系统标签"
 					location "body"
 					type "List"
 					optional true

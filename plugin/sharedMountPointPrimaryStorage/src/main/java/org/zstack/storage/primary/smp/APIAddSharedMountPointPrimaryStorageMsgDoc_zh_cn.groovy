@@ -7,18 +7,18 @@ doc {
 
     category "storage.primary"
 
-    desc "添加一个共享挂载点的主存储"
+    desc """添加一个共享挂载点的主存储"""
 
     rest {
         request {
 			url "POST /v1/primary-storage/smp"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIAddSharedMountPointPrimaryStorageMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

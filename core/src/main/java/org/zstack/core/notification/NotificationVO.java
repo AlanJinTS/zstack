@@ -1,5 +1,7 @@
 package org.zstack.core.notification;
 
+import org.zstack.header.vo.BaseResource;
+
 import javax.persistence.*;
 import java.sql.Timestamp;
 
@@ -8,6 +10,7 @@ import java.sql.Timestamp;
  */
 @Entity
 @Table
+@BaseResource
 public class NotificationVO {
     @Id
     @Column
@@ -38,6 +41,15 @@ public class NotificationVO {
     private Timestamp createDate;
     @Column
     private Timestamp lastOpDate;
+
+    // this column is for DB partitions, don't use it for application
+    @Column
+    private Timestamp dateTime;
+
+    @PrePersist
+    private void prePersist() {
+        dateTime = new Timestamp(System.currentTimeMillis());
+    }
 
     public String getOpaque() {
         return opaque;

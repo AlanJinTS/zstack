@@ -1,22 +1,24 @@
 package org.zstack.header.image
 
+import org.zstack.header.image.APISyncImageSizeEvent
+
 doc {
     title "刷新镜像大小信息(SyncImageSize)"
 
     category "image"
 
-    desc "获取实时镜像大小信息"
+    desc """获取实时镜像大小信息"""
 
     rest {
         request {
 			url "PUT /v1/images/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APISyncImageSizeMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -32,7 +34,7 @@ doc {
 				}
 				column {
 					name "systemTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "系统标签"
 					location "body"
 					type "List"
@@ -42,7 +44,7 @@ doc {
 				}
 				column {
 					name "userTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "用户标签"
 					location "body"
 					type "List"

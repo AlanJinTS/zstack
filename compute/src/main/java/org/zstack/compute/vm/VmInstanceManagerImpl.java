@@ -5,18 +5,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.zstack.compute.allocator.HostAllocatorManager;
 import org.zstack.core.Platform;
+import org.zstack.core.asyncbatch.While;
 import org.zstack.core.cloudbus.*;
 import org.zstack.core.componentloader.PluginRegistry;
 import org.zstack.core.config.GlobalConfig;
 import org.zstack.core.config.GlobalConfigUpdateExtensionPoint;
-import org.zstack.core.db.DatabaseFacade;
-import org.zstack.core.db.DbEntityLister;
-import org.zstack.core.db.SimpleQuery;
+import org.zstack.core.db.*;
 import org.zstack.core.db.SimpleQuery.Op;
 import org.zstack.core.errorcode.ErrorFacade;
 import org.zstack.core.jsonlabel.JsonLabel;
-import org.zstack.core.scheduler.SchedulerConstant;
-import org.zstack.core.scheduler.SchedulerFacade;
+import org.zstack.core.notification.N;
 import org.zstack.core.thread.AsyncThread;
 import org.zstack.core.thread.CancelablePeriodicTask;
 import org.zstack.core.thread.ThreadFacade;
@@ -33,16 +31,16 @@ import org.zstack.header.configuration.DiskOfferingInventory;
 import org.zstack.header.configuration.DiskOfferingVO;
 import org.zstack.header.configuration.DiskOfferingVO_;
 import org.zstack.header.configuration.InstanceOfferingVO;
+import org.zstack.header.core.FutureCompletion;
+import org.zstack.header.core.NoErrorCompletion;
 import org.zstack.header.core.ReturnValueCompletion;
-import org.zstack.header.core.scheduler.APICreateSchedulerMessage;
 import org.zstack.header.core.workflow.FlowChain;
 import org.zstack.header.errorcode.ErrorCode;
 import org.zstack.header.errorcode.OperationFailureException;
 import org.zstack.header.errorcode.SysErrors;
 import org.zstack.header.exception.CloudConfigureFailException;
 import org.zstack.header.exception.CloudRuntimeException;
-import org.zstack.header.host.HostCanonicalEvents;
-import org.zstack.header.host.HostCanonicalEvents.HostStatusChangedData;
+import org.zstack.header.host.AfterChangeHostStatusExtensionPoint;
 import org.zstack.header.host.HostInventory;
 import org.zstack.header.host.HostStatus;
 import org.zstack.header.identity.*;
@@ -73,6 +71,7 @@ import org.zstack.header.zone.ZoneVO;
 import org.zstack.identity.AccountManager;
 import org.zstack.identity.QuotaUtil;
 import org.zstack.search.SearchQuery;
+import org.zstack.tag.SystemTagUtils;
 import org.zstack.tag.TagManager;
 import org.zstack.utils.CollectionUtils;
 import org.zstack.utils.ObjectUtils;
@@ -83,10 +82,7 @@ import org.zstack.utils.function.Function;
 import org.zstack.utils.gson.JSONObjectUtil;
 import org.zstack.utils.logging.CLogger;
 import org.zstack.utils.network.NetworkUtils;
-
-import static org.zstack.core.Platform.argerr;
-import static org.zstack.core.Platform.operr;
-
+import static org.zstack.core.Platform.*;
 import javax.persistence.Tuple;
 import javax.persistence.TypedQuery;
 import java.sql.Timestamp;
@@ -104,7 +100,8 @@ public class VmInstanceManagerImpl extends AbstractService implements
         ManagementNodeReadyExtensionPoint,
         L3NetworkDeleteExtensionPoint,
         ResourceOwnerAfterChangeExtensionPoint,
-        GlobalApiMessageInterceptor {
+        GlobalApiMessageInterceptor,
+        AfterChangeHostStatusExtensionPoint {
     private static final CLogger logger = Utils.getLogger(VmInstanceManagerImpl.class);
     private Map<String, VmInstanceFactory> vmInstanceFactories = Collections.synchronizedMap(new HashMap<>());
     private List<String> createVmWorkFlowElements;
@@ -163,8 +160,6 @@ public class VmInstanceManagerImpl extends AbstractService implements
     private EventFacade evtf;
     @Autowired
     private HostAllocatorManager hostAllocatorMgr;
-    @Autowired
-    private SchedulerFacade schedulerFacade;
 
     @Override
     @MessageSafe
@@ -623,12 +618,22 @@ public class VmInstanceManagerImpl extends AbstractService implements
         vo.setMemorySize(msg.getMemorySize());
         vo.setAllocatorStrategy(msg.getAllocatorStrategy());
 
-        acntMgr.createAccountResourceRef(msg.getAccountUuid(), vo.getUuid(), VmInstanceVO.class);
-
         String vmType = msg.getType() == null ? VmInstanceConstant.USER_VM_TYPE : msg.getType();
         VmInstanceType type = VmInstanceType.valueOf(vmType);
         VmInstanceFactory factory = getVmInstanceFactory(type);
-        vo = factory.createVmInstance(vo, msg);
+
+        VmInstanceVO finalVo = vo;
+        vo = new SQLBatchWithReturn<VmInstanceVO>() {
+            @Override
+            protected VmInstanceVO scripts() {
+                factory.createVmInstance(finalVo, msg);
+                dbf.getEntityManager().flush();
+                dbf.getEntityManager().refresh(finalVo);
+                acntMgr.createAccountResourceRef(msg.getAccountUuid(), finalVo.getUuid(), VmInstanceVO.class);
+
+                return finalVo;
+            }
+        }.execute();
 
         if (cmsg != null) {
             tagMgr.createTagsFromAPICreateMessage(cmsg, vo.getUuid(), VmInstanceVO.class.getSimpleName());
@@ -663,6 +668,7 @@ public class VmInstanceManagerImpl extends AbstractService implements
         smsg.setRootDiskOfferingUuid(msg.getRootDiskOfferingUuid());
         smsg.setVmInstanceInventory(VmInstanceInventory.valueOf(vo));
         smsg.setPrimaryStorageUuidForRootVolume(msg.getPrimaryStorageUuidForRootVolume());
+        smsg.setPrimaryStorageUuidForDataVolume(msg.getPrimaryStorageUuidForDataVolume());
         bus.makeTargetServiceIdByResourceUuid(smsg, VmInstanceConstant.SERVICE_ID, vo.getUuid());
         bus.send(smsg, new CloudBusCallBack(smsg) {
             @Override
@@ -708,6 +714,17 @@ public class VmInstanceManagerImpl extends AbstractService implements
     private CreateVmInstanceMsg fromAPICreateVmInstanceMsg(APICreateVmInstanceMsg msg) {
         CreateVmInstanceMsg cmsg = new CreateVmInstanceMsg();
 
+
+        if(msg.getZoneUuid() != null){
+            cmsg.setZoneUuid(msg.getZoneUuid());
+        }else{
+            String zoneUuid = Q.New(L3NetworkVO.class)
+                    .select(L3NetworkVO_.zoneUuid)
+                    .eq(L3NetworkVO_.uuid, msg.getL3NetworkUuids().get(0))
+                    .findValue();
+            cmsg.setZoneUuid(zoneUuid);
+        }
+
         InstanceOfferingVO iovo = dbf.findByUuid(msg.getInstanceOfferingUuid(), InstanceOfferingVO.class);
         cmsg.setInstanceOfferingUuid(iovo.getUuid());
         cmsg.setCpuNum(iovo.getCpuNum());
@@ -722,15 +739,24 @@ public class VmInstanceManagerImpl extends AbstractService implements
         cmsg.setType(msg.getType());
         cmsg.setRootDiskOfferingUuid(msg.getRootDiskOfferingUuid());
         cmsg.setDataDiskOfferingUuids(msg.getDataDiskOfferingUuids());
-        cmsg.setZoneUuid(msg.getZoneUuid());
+
         cmsg.setClusterUuid(msg.getClusterUuid());
         cmsg.setHostUuid(msg.getHostUuid());
         cmsg.setPrimaryStorageUuidForRootVolume(msg.getPrimaryStorageUuidForRootVolume());
+        cmsg.setPrimaryStorageUuidForDataVolume(getPSUuidForDataVolume(msg.getSystemTags()));
         cmsg.setDescription(msg.getDescription());
         cmsg.setResourceUuid(msg.getResourceUuid());
         cmsg.setDefaultL3NetworkUuid(msg.getDefaultL3NetworkUuid());
         cmsg.setStrategy(msg.getStrategy());
         return cmsg;
+    }
+
+    private String getPSUuidForDataVolume(List<String> systemTags){
+        if(systemTags == null || systemTags.isEmpty()){
+            return null;
+        }
+
+        return SystemTagUtils.findTagValue(systemTags, VmSystemTags.PRIMARY_STORAGE_UUID_FOR_DATA_VOLUME, VmSystemTags.PRIMARY_STORAGE_UUID_FOR_DATA_VOLUME_TOKEN);
     }
 
     private void handle(final APICreateVmInstanceMsg msg) {
@@ -801,7 +827,6 @@ public class VmInstanceManagerImpl extends AbstractService implements
             populateExtensions();
             installSystemTagValidator();
             installGlobalConfigUpdater();
-            setupCanonicalEvents();
 
             bus.installBeforeDeliveryMessageInterceptor(new AbstractBeforeDeliveryMessageInterceptor() {
                 @Override
@@ -828,24 +853,6 @@ public class VmInstanceManagerImpl extends AbstractService implements
         } catch (Exception e) {
             throw new CloudConfigureFailException(VmInstanceManagerImpl.class, e.getMessage(), e);
         }
-    }
-
-    private void setupCanonicalEvents() {
-        evtf.on(HostCanonicalEvents.HOST_STATUS_CHANGED_PATH, new EventCallback() {
-            @Override
-            public void run(Map tokens, Object data) {
-                HostStatusChangedData d = (HostStatusChangedData) data;
-                if (!HostStatus.Disconnected.toString().equals(d.getNewStatus())) {
-                    return;
-                }
-
-                if (!destMaker.isManagedByUs(d.getHostUuid())) {
-                    return;
-                }
-
-                putVmToUnknownState(d.getHostUuid());
-            }
-        });
     }
 
     private void installGlobalConfigUpdater() {
@@ -1004,25 +1011,7 @@ public class VmInstanceManagerImpl extends AbstractService implements
         return vmInstanceBaseExtensionFactories.get(msg.getClass());
     }
 
-    @Transactional
-    protected void putVmToUnknownState(final String hostUuid) {
-        SimpleQuery<VmInstanceVO> query = dbf.createQuery(VmInstanceVO.class);
-        query.select(VmInstanceVO_.uuid);
-        query.add(VmInstanceVO_.hostUuid, Op.EQ, hostUuid);
-        List<String> tss = query.listValue();
-        List<VmStateChangedOnHostMsg> msgs = CollectionUtils.transformToList(tss, new Function<VmStateChangedOnHostMsg, String>() {
-            @Override
-            public VmStateChangedOnHostMsg call(String vmUuid) {
-                VmStateChangedOnHostMsg msg = new VmStateChangedOnHostMsg();
-                msg.setVmInstanceUuid(vmUuid);
-                msg.setHostUuid(hostUuid);
-                msg.setStateOnHost(VmInstanceState.Unknown);
-                bus.makeTargetServiceIdByResourceUuid(msg, VmInstanceConstant.SERVICE_ID, vmUuid);
-                return msg;
-            }
-        });
-        bus.send(msgs);
-    }
+
 
     @Override
     public FlowChain getCreateVmWorkFlowChain(VmInstanceInventory inv) {
@@ -1155,9 +1144,10 @@ public class VmInstanceManagerImpl extends AbstractService implements
                         check((APIChangeResourceOwnerMsg) msg, pairs);
                     } else if (msg instanceof APIRecoverVmInstanceMsg) {
                         check((APIRecoverVmInstanceMsg) msg, pairs);
-                    } else if (msg instanceof APICreateSchedulerMessage) {
-                        check((APICreateSchedulerMessage) msg, pairs);
                     }
+//                    } else if (msg instanceof APICreateSchedulerJobMessage) {
+//                        check((APICreateSchedulerJobMessage) msg, pairs);
+//                    }
                 } else {
                     if (msg instanceof APIChangeResourceOwnerMsg) {
                         check((APIChangeResourceOwnerMsg) msg, pairs);
@@ -1211,10 +1201,10 @@ public class VmInstanceManagerImpl extends AbstractService implements
                 usage.setUsed(new VmQuotaUtil().getUsedAllVolumeSize(accountUuid));
                 usages.add(usage);
 
-                usage = new Quota.QuotaUsage();
-                usage.setName(SchedulerConstant.QUOTA_SCHEDULER_NUM);
-                usage.setUsed(new VmQuotaUtil().getUsedSchedulerNum(accountUuid));
-                usages.add(usage);
+//                usage = new Quota.QuotaUsage();
+//                usage.setName(SchedulerConstant.QUOTA_SCHEDULER_NUM);
+//                usage.setUsed(new VmQuotaUtil().getUsedSchedulerNum(accountUuid));
+//                usages.add(usage);
 
                 return usages;
             }
@@ -1379,7 +1369,8 @@ public class VmInstanceManagerImpl extends AbstractService implements
                     if (vmInstanceVO.getState().equals(VmInstanceState.Created)) {
                         return;
                     } else if (!vmInstanceVO.getState().equals(VmInstanceState.Stopped)
-                            && !vmInstanceVO.getState().equals(VmInstanceState.Running)) {
+                            && !vmInstanceVO.getState().equals(VmInstanceState.Running)
+                            && !vmInstanceVO.getState().equals(VmInstanceState.Starting)) {
                         throw new ApiMessageInterceptionException(errf.instantiateErrorCode(VmErrors.NOT_IN_CORRECT_STATE,
                                 String.format("Incorrect VM State.VM[uuid:%s] current state:%s. ",
                                         msg.getResourceUuid(), vmInstanceVO.getState())
@@ -1626,24 +1617,24 @@ public class VmInstanceManagerImpl extends AbstractService implements
                 }
             }
 
-            private void check(APICreateSchedulerMessage msg, Map<String, Quota.QuotaPair> pairs) {
-                String currentAccountUuid = msg.getSession().getAccountUuid();
-                String resourceTargetOwnerAccountUuid = msg.getSession().getAccountUuid();
-
-                long schedulerNumQuota = pairs.get(SchedulerConstant.QUOTA_SCHEDULER_NUM).getValue();
-                long schedulerNumUsed = new VmQuotaUtil().getUsedSchedulerNum(resourceTargetOwnerAccountUuid);
-                {
-                    QuotaUtil.QuotaCompareInfo quotaCompareInfo;
-                    quotaCompareInfo = new QuotaUtil.QuotaCompareInfo();
-                    quotaCompareInfo.currentAccountUuid = currentAccountUuid;
-                    quotaCompareInfo.resourceTargetOwnerAccountUuid = resourceTargetOwnerAccountUuid;
-                    quotaCompareInfo.quotaName = SchedulerConstant.QUOTA_SCHEDULER_NUM;
-                    quotaCompareInfo.quotaValue = schedulerNumQuota;
-                    quotaCompareInfo.currentUsed = schedulerNumUsed;
-                    quotaCompareInfo.request = 1;
-                    new QuotaUtil().CheckQuota(quotaCompareInfo);
-                }
-            }
+//            private void check(APICreateSchedulerJobMessage msg, Map<String, Quota.QuotaPair> pairs) {
+//                String currentAccountUuid = msg.getSession().getAccountUuid();
+//                String resourceTargetOwnerAccountUuid = msg.getSession().getAccountUuid();
+//
+//                long schedulerNumQuota = pairs.get(SchedulerConstant.QUOTA_SCHEDULER_NUM).getValue();
+//                long schedulerNumUsed = new VmQuotaUtil().getUsedSchedulerNum(resourceTargetOwnerAccountUuid);
+//                {
+//                    QuotaUtil.QuotaCompareInfo quotaCompareInfo;
+//                    quotaCompareInfo = new QuotaUtil.QuotaCompareInfo();
+//                    quotaCompareInfo.currentAccountUuid = currentAccountUuid;
+//                    quotaCompareInfo.resourceTargetOwnerAccountUuid = resourceTargetOwnerAccountUuid;
+//                    quotaCompareInfo.quotaName = SchedulerConstant.QUOTA_SCHEDULER_NUM;
+//                    quotaCompareInfo.quotaValue = schedulerNumQuota;
+//                    quotaCompareInfo.currentUsed = schedulerNumUsed;
+//                    quotaCompareInfo.request = 1;
+//                    new QuotaUtil().CheckQuota(quotaCompareInfo);
+//                }
+//            }
         };
 
         Quota quota = new Quota();
@@ -1679,10 +1670,10 @@ public class VmInstanceManagerImpl extends AbstractService implements
         p.setValue(SizeUnit.TERABYTE.toByte(10));
         quota.addPair(p);
 
-        p = new Quota.QuotaPair();
-        p.setName(SchedulerConstant.QUOTA_SCHEDULER_NUM);
-        p.setValue(80);
-        quota.addPair(p);
+//        p = new Quota.QuotaPair();
+//        p.setName(SchedulerConstant.QUOTA_SCHEDULER_NUM);
+//        p.setValue(80);
+//        quota.addPair(p);
 
         quota.addMessageNeedValidation(APICreateVmInstanceMsg.class);
         quota.addMessageNeedValidation(APIRecoverVmInstanceMsg.class);
@@ -1692,53 +1683,17 @@ public class VmInstanceManagerImpl extends AbstractService implements
         quota.addMessageNeedValidation(APIChangeResourceOwnerMsg.class);
         quota.addMessageNeedValidation(StartVmInstanceMsg.class);
         // scheduler
-        quota.addMessageNeedValidation(APICreateSchedulerMessage.class);
-        quota.addMessageNeedValidation(APICreateStartVmInstanceSchedulerMsg.class);
-        quota.addMessageNeedValidation(APICreateVolumeSnapshotSchedulerMsg.class);
-        quota.addMessageNeedValidation(APICreateRebootVmInstanceSchedulerMsg.class);
-        quota.addMessageNeedValidation(APICreateStopVmInstanceSchedulerMsg.class);
+//        quota.addMessageNeedValidation(APICreateSchedulerJobMessage.class);
+//        quota.addMessageNeedValidation(APICreateStartVmInstanceSchedulerJobMsg.class);
+//        quota.addMessageNeedValidation(APICreateVolumeSnapshotSchedulerJobMsg.class);
+//        quota.addMessageNeedValidation(APICreateRebootVmInstanceSchedulerJobMsg.class);
+//        quota.addMessageNeedValidation(APICreateStopVmInstanceSchedulerJobMsg.class);
 
 
         quota.setOperator(checker);
 
         return list(quota);
 
-    }
-
-    private List<String> getVmInUnknownStateManagedByUs() {
-        int qun = 10000;
-        SimpleQuery q = dbf.createQuery(VmInstanceVO.class);
-        q.add(VmInstanceVO_.state, Op.EQ, VmInstanceState.Unknown);
-        long amount = q.count();
-        int times = (int) (amount / qun) + (amount % qun != 0 ? 1 : 0);
-        int start = 0;
-        List<String> ret = new ArrayList<>();
-        for (int i = 0; i < times; i++) {
-            q = dbf.createQuery(VmInstanceVO.class);
-            q.select(VmInstanceVO_.uuid, VmInstanceVO_.hostUuid);
-            q.add(VmInstanceVO_.state, Op.EQ, VmInstanceState.Unknown);
-            q.setLimit(qun);
-            q.setStart(start);
-            List<Tuple> lst = q.listTuple();
-            start += qun;
-            for (Tuple t : lst) {
-                String vmUuid = t.get(0, String.class);
-                if (!destMaker.isManagedByUs(vmUuid)) {
-                    continue;
-                }
-
-                String hostUuid = t.get(1, String.class);
-                if (hostUuid == null) {
-                    //TODO
-                    logger.warn(String.format("the vm[uuid:%s] is in Unknown state, but its hostUuid is null," +
-                            " we cannot check its real state", vmUuid));
-                    continue;
-                }
-
-                ret.add(vmUuid);
-            }
-        }
-        return ret;
     }
 
     @Override
@@ -1944,5 +1899,43 @@ public class VmInstanceManagerImpl extends AbstractService implements
         }
     }
 
+    @Override
+    public void afterChangeHostStatus(String hostUuid, HostStatus before, HostStatus next) {
+        if(next == HostStatus.Disconnected) {
+            List<String> vmUuids = Q.New(VmInstanceVO.class).select(VmInstanceVO_.uuid)
+                    .eq(VmInstanceVO_.hostUuid, hostUuid)
+                    .listValues();
+            if(vmUuids.isEmpty()){
+                return;
+            }
 
+            FutureCompletion future = new FutureCompletion(null);
+
+            new While<>(vmUuids).all((vmUuid, completion) -> {
+                VmStateChangedOnHostMsg msg = new VmStateChangedOnHostMsg();
+                msg.setVmInstanceUuid(vmUuid);
+                msg.setHostUuid(hostUuid);
+                msg.setStateOnHost(VmInstanceState.Unknown);
+                bus.makeTargetServiceIdByResourceUuid(msg, VmInstanceConstant.SERVICE_ID, vmUuid);
+                bus.send(msg, new CloudBusCallBack(completion) {
+                    @Override
+                    public void run(MessageReply reply) {
+                        if(!reply.isSuccess()){
+                            N.New(VmInstanceVO.class, vmUuid).warn_("the host[uuid:%s] becomes Disconnected, but the vm[uuid:%s] fails to change it's state to Unknown, %s",
+                                    hostUuid, vmUuid, reply.getError());
+                        } else {
+                            N.New(VmInstanceVO.class, vmUuid).info_("the host[uuid:%s] becomes Disconnected, change the VM[uuid:%s]' state to Unknown", hostUuid, vmUuid);
+                        }
+                        completion.done();
+                    }
+                });
+            }).run(new NoErrorCompletion(future) {
+                @Override
+                public void done() {
+                    future.success();
+                }
+            });
+            future.await();
+        }
+    }
 }

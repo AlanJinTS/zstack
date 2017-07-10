@@ -1,9 +1,5 @@
 package org.zstack.test.integration.networkservice.provider
 
-import org.zstack.test.integration.networkservice.provider.flat.eip.FlatNetworkGCCase
-import org.zstack.test.integration.networkservice.provider.flat.userdata.OneVmUserdata
-import org.zstack.test.integration.networkservice.provider.flat.dhcp.OneVmDhcp
-import org.zstack.test.integration.networkservice.provider.virtualrouter.eip.VirtualRouterEipCase
 import org.zstack.testlib.SpringSpec
 import org.zstack.testlib.Test
 
@@ -17,15 +13,20 @@ class NetworkServiceProviderTest extends Test {
         portForwarding()
         virtualRouter()
         flatNetwork()
+        securityGroup()
         eip()
         lb()
         vyos()
+        nfsPrimaryStorage()
         kvm()
     }
 
     @Override
     void setup() {
         useSpring(springSpec)
+        spring {
+            securityGroup()
+        }
     }
 
     @Override

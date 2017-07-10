@@ -5,16 +5,14 @@ import org.springframework.transaction.annotation.Transactional;
 import org.zstack.core.cloudbus.CloudBusCallBack;
 import org.zstack.core.cloudbus.CloudBusListCallBack;
 import org.zstack.core.componentloader.PluginRegistry;
-import org.zstack.core.db.Q;
-import org.zstack.core.db.SQLBatch;
-import org.zstack.core.db.SimpleQuery;
+import org.zstack.core.db.*;
 import org.zstack.core.db.SimpleQuery.Op;
-import org.zstack.core.db.UpdateQuery;
 import org.zstack.core.thread.AsyncThread;
 import org.zstack.core.thread.ChainTask;
 import org.zstack.core.thread.SyncTaskChain;
 import org.zstack.core.workflow.FlowChainBuilder;
 import org.zstack.core.workflow.ShareFlow;
+import org.zstack.header.apimediator.ApiMessageInterceptionException;
 import org.zstack.header.cluster.ClusterInventory;
 import org.zstack.header.cluster.ClusterVO;
 import org.zstack.header.cluster.ClusterVO_;
@@ -28,6 +26,7 @@ import org.zstack.header.errorcode.OperationFailureException;
 import org.zstack.header.errorcode.SysErrors;
 import org.zstack.header.exception.CloudRuntimeException;
 import org.zstack.header.host.*;
+import org.zstack.header.image.ImageInventory;
 import org.zstack.header.image.ImageVO;
 import org.zstack.header.message.APIMessage;
 import org.zstack.header.message.Message;
@@ -37,10 +36,8 @@ import org.zstack.header.storage.primary.VolumeSnapshotCapability.VolumeSnapshot
 import org.zstack.header.storage.snapshot.VolumeSnapshotInventory;
 import org.zstack.header.storage.snapshot.VolumeSnapshotVO;
 import org.zstack.header.storage.snapshot.VolumeSnapshotVO_;
-import org.zstack.header.volume.VolumeConstant;
-import org.zstack.header.volume.VolumeInventory;
-import org.zstack.header.volume.VolumeType;
-import org.zstack.header.volume.VolumeVO;
+import org.zstack.header.vm.*;
+import org.zstack.header.volume.*;
 import org.zstack.storage.primary.PrimaryStorageBase;
 import org.zstack.storage.primary.PrimaryStorageCapacityUpdater;
 import org.zstack.storage.primary.PrimaryStoragePhysicalCapacityManager;
@@ -53,6 +50,7 @@ import org.zstack.utils.function.Function;
 import org.zstack.utils.gson.JSONObjectUtil;
 import org.zstack.utils.logging.CLogger;
 
+import static org.zstack.core.Platform.err;
 import static org.zstack.core.Platform.operr;
 
 import javax.persistence.LockModeType;
@@ -144,59 +142,103 @@ public class LocalStorageBase extends PrimaryStorageBase {
         // been deleted, and ZStack has to consult the host for the image size
 
         APILocalStorageGetVolumeMigratableReply reply = new APILocalStorageGetVolumeMigratableReply();
-        String sql = "select vol.size from VolumeVO vol where vol.uuid = :uuid";
-        TypedQuery<Long> vq = dbf.getEntityManager().createQuery(sql, Long.class);
-        vq.setParameter("uuid", msg.getVolumeUuid());
-        long size = vq.getSingleResult();
-        size = ratioMgr.calculateByRatio(self.getUuid(), size);
 
-        sql = "select sum(sp.size) from VolumeSnapshotVO sp where sp.volumeUuid = :volUuid";
-        TypedQuery<Long> sq = dbf.getEntityManager().createQuery(sql, Long.class);
-        sq.setParameter("volUuid", msg.getVolumeUuid());
-        Long snapshotSize = sq.getSingleResult();
+        new SQLBatch() {
+            @Override
+            protected void scripts() {
 
-        if (snapshotSize != null) {
-            size += snapshotSize;
-        }
+                //1.count the image size of volume
+                long size = SQL.New("select vol.size" +
+                        " from VolumeVO vol" +
+                        " where vol.uuid = :uuid")
+                        .param("uuid", msg.getVolumeUuid()).find();
+                size = ratioMgr.calculateByRatio(self.getUuid(), size);
 
-        sql = "select href.hostUuid" +
-                " from LocalStorageHostRefVO href" +
-                " where href.hostUuid !=" +
-                " (" +
-                " select rref.hostUuid" +
-                " from LocalStorageResourceRefVO rref" +
-                " where rref.resourceUuid = :volUuid" +
-                " and rref.resourceType = :rtype" +
-                " )" +
-                " and (href.totalPhysicalCapacity * (1 - :thres)) <= href.availablePhysicalCapacity" +
-                " and href.availablePhysicalCapacity != 0" +
-                " and href.availableCapacity >= :size" +
-                " and href.primaryStorageUuid = :psUuid" +
-                " group by href.hostUuid";
 
-        double physicalThreshold = physicalCapacityMgr.getRatio(self.getUuid());
+                Long snapshotSize = SQL.New("select sum(sp.size)" +
+                        " from VolumeSnapshotVO sp" +
+                        " where sp.volumeUuid = :volUuid")
+                        .param("volUuid", msg.getVolumeUuid()).find();
+                if (snapshotSize != null) {
+                    size += snapshotSize;
+                }
 
-        //TypedQuery<String> q = dbf.getEntityManager().createQuery(sql, String.class);
-        Query q = dbf.getEntityManager().createNativeQuery(sql);
-        q.setParameter("volUuid", msg.getVolumeUuid());
-        q.setParameter("rtype", VolumeVO.class.getSimpleName());
-        q.setParameter("thres", physicalThreshold);
-        q.setParameter("size", size);
-        q.setParameter("psUuid", self.getUuid());
-        List<String> hostUuids = q.getResultList();
 
-        if (hostUuids.isEmpty()) {
-            reply.setInventories(new ArrayList<HostInventory>());
-            bus.reply(msg, reply);
-            return;
-        }
+                //2.select hosts that have enough capacity
+                double physicalThreshold = physicalCapacityMgr.getRatio(self.getUuid());
+                List<String> hostUuids = SQL.New("select href.hostUuid" +
+                        " from LocalStorageHostRefVO href" +
+                        " where href.hostUuid !=" +
+                        " (" +
+                        " select rref.hostUuid" +
+                        " from LocalStorageResourceRefVO rref" +
+                        " where rref.resourceUuid = :volUuid" +
+                        " and rref.resourceType = :rtype" +
+                        " )" +
+                        " and (href.totalPhysicalCapacity * (1.0 - :thres)) <= href.availablePhysicalCapacity" +
+                        " and href.availablePhysicalCapacity != 0" +
+                        " and href.availableCapacity >= :size" +
+                        " and href.primaryStorageUuid = :psUuid" +
+                        " group by href.hostUuid")
+                        .param("volUuid", msg.getVolumeUuid())
+                        .param("rtype", VolumeVO.class.getSimpleName())
+                        .param("thres", physicalThreshold)
+                        .param("size", size)
+                        .param("psUuid", self.getUuid()).list();
 
-        sql = "select h from HostVO h where h.uuid in (:uuids) and h.status = :hstatus";
-        TypedQuery<HostVO> hq = dbf.getEntityManager().createQuery(sql, HostVO.class);
-        hq.setParameter("uuids", hostUuids);
-        hq.setParameter("hstatus", HostStatus.Connected);
-        List<HostVO> hosts = hq.getResultList();
-        reply.setInventories(HostInventory.valueOf(hosts));
+                if (hostUuids.isEmpty()) {
+                    reply.setInventories(new ArrayList<HostInventory>());
+                    bus.reply(msg, reply);
+                    return;
+                }
+
+                LinkedList<HostVO> hosts = new LinkedList<>(SQL.New("select h from HostVO h " +
+                        " where h.uuid in (:uuids)" +
+                        " and h.status = :hstatus")
+                        .param("uuids", hostUuids)
+                        .param("hstatus", HostStatus.Connected).list());
+
+                //3.check if the network environment meets the requirement of vm running after migrate When migrate the rootVolume
+                Boolean isRootVolume = (Q.New(VolumeVO.class).select(VolumeVO_.type)
+                        .eq(VolumeVO_.uuid,msg.getVolumeUuid())
+                        .findValue() == VolumeType.Root);
+                if(isRootVolume){
+                    Tuple tuple = Q.New(VmInstanceVO.class)
+                            .select(VmInstanceVO_.clusterUuid, VmInstanceVO_.uuid)
+                            .eq(VmInstanceVO_.rootVolumeUuid, msg.getVolumeUuid()).findTuple();
+                    String originClusterUuid = tuple.get(0,String.class);
+                    String originVmUuid = tuple.get(1,String.class);
+                    if(originClusterUuid == null){
+                        throw new ApiMessageInterceptionException(
+                                err(SysErrors.INTERNAL,"The clusterUuid of vm cannot be null when migrate the vm"));
+                    }
+
+                    for(int i = 0; i < hosts.size(); i++){
+                        String destClusterUuid = Q.New(HostVO.class).select(HostVO_.clusterUuid)
+                                .eq(HostVO_.uuid,hosts.get(i).getUuid()).findValue();
+                        if(!originClusterUuid.equals(destClusterUuid)){
+                            List<String> originL2NetworkList  = sql("select l2NetworkUuid from L3NetworkVO" +
+                                    " where uuid in(select l3NetworkUuid from VmNicVO where vmInstanceUuid = :vmUuid)")
+                                    .param("vmUuid",originVmUuid).list();
+                            List<String> l2NetworkList = sql("select l2NetworkUuid from L2NetworkClusterRefVO" +
+                                    " where clusterUuid = :clusterUuid")
+                                    .param("clusterUuid",destClusterUuid).list();
+
+                            for(String l2:originL2NetworkList){
+                                if(!l2NetworkList.contains(l2)){
+                                    //remove inappropriate host from list
+                                    hosts.remove(i);
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+                reply.setInventories(HostInventory.valueOf(hosts));
+            }
+
+        }.execute();
+
         bus.reply(msg, reply);
     }
 
@@ -220,9 +262,42 @@ public class LocalStorageBase extends PrimaryStorageBase {
         omsg.setVolumeUuid(msg.getVolumeUuid());
         bus.makeTargetServiceIdByResourceUuid(omsg, VolumeConstant.SERVICE_ID, msg.getVolumeUuid());
 
-        bus.send(omsg, new CloudBusCallBack(msg) {
+        MigrateRootVolumeVmOverlayMsg vmsg = new MigrateRootVolumeVmOverlayMsg();
+
+        Tuple t = Q.New(VmInstanceVO.class).select(VmInstanceVO_.uuid, VmInstanceVO_.state)
+                .eq(VmInstanceVO_.rootVolumeUuid, msg.getVolumeUuid())
+                .findTuple();
+        String vmUuid = t == null ? null : t.get(0, String.class);
+        String originStateEvent = t == null ? null : t.get(1, VmInstanceState.class).getDrivenEvent().toString();
+
+        if(vmUuid != null){
+            ChangeVmStateMsg cmsg = new ChangeVmStateMsg();
+            cmsg.setStateEvent(VmInstanceStateEvent.volumeMigrating.toString());
+            cmsg.setVmInstanceUuid(vmUuid);
+            bus.makeTargetServiceIdByResourceUuid(cmsg, VmInstanceConstant.SERVICE_ID, vmUuid);
+            MessageReply reply = bus.call(cmsg);
+            if(!reply.isSuccess()){
+                evt.setError(reply.getError());
+                bus.publish(evt);
+                return;
+            }
+            vmsg.setMessage(omsg);
+            vmsg.setVmInstanceUuid(vmUuid);
+            bus.makeTargetServiceIdByResourceUuid(vmsg, VmInstanceConstant.SERVICE_ID, vmUuid);
+        }
+
+        bus.send(vmUuid == null ? omsg : vmsg, new CloudBusCallBack(msg) {
             @Override
             public void run(MessageReply reply) {
+                if(vmUuid != null){
+                    ChangeVmStateMsg cmsg = new ChangeVmStateMsg();
+                    cmsg.setStateEvent(reply.isSuccess() ? VmInstanceStateEvent.volumeMigrated.toString() : originStateEvent);
+                    cmsg.setVmInstanceUuid(vmUuid);
+                    bus.makeTargetServiceIdByResourceUuid(cmsg, VmInstanceConstant.SERVICE_ID, vmUuid);
+                    // if fail, host ping task will sync it state
+                    bus.call(cmsg);
+                }
+
                 if (!reply.isSuccess()) {
                     evt.setError(reply.getError());
                     bus.publish(evt);
@@ -444,7 +519,7 @@ public class LocalStorageBase extends PrimaryStorageBase {
 
                                     @Override
                                     public void fail(ErrorCode errorCode) {
-                                        //TODO
+                                        //TODO GC
                                         logger.warn(String.format("failed to delete %s on the host[uuid:%s], %s",
                                                 path, struct.getSrcHostUuid(), errorCode));
                                         run();
@@ -460,12 +535,41 @@ public class LocalStorageBase extends PrimaryStorageBase {
                 done(new FlowDoneHandler(msg, completion) {
                     @Override
                     public void handle(Map data) {
-                        LocalStorageResourceRefVO vo = Q.New(LocalStorageResourceRefVO.class)
-                                .eq(LocalStorageResourceRefVO_.resourceUuid, volumeRefVO.getResourceUuid())
-                                .eq(LocalStorageResourceRefVO_.primaryStorageUuid, volumeRefVO.getPrimaryStorageUuid())
-                                .eq(LocalStorageResourceRefVO_.hostUuid, msg.getDestHostUuid())
-                                .find();
-                        reply.setInventory(LocalStorageResourceRefInventory.valueOf(vo));
+                        new SQLBatch(){
+                            //migrate the rooVolume and need to update the ClusterUuid of vm
+                            @Override
+                            protected void scripts() {
+                                Boolean isRootVolume = (Q.New(VolumeVO.class).select(VolumeVO_.type)
+                                        .eq(VolumeVO_.uuid,volumeRefVO.getResourceUuid())
+                                        .findValue() == VolumeType.Root);
+                                if(isRootVolume){
+                                    Tuple tuple = Q.New(VmInstanceVO.class)
+                                            .select(VmInstanceVO_.clusterUuid, VmInstanceVO_.uuid)
+                                            .eq(VmInstanceVO_.rootVolumeUuid, volumeRefVO.getResourceUuid()).findTuple();
+                                    String originClusterUuid = tuple.get(0,String.class);
+                                    String vmUuid = tuple.get(1,String.class);
+                                    String clusterUuid = Q.New(HostVO.class).select(HostVO_.clusterUuid)
+                                            .eq(HostVO_.uuid,msg.getDestHostUuid()).findValue();
+
+                                    if(!originClusterUuid.equals(clusterUuid)){
+                                        sql("update  VmInstanceEO" +
+                                                " set clusterUuid = :clusterUuid" +
+                                                " where uuid = :vmUuid")
+                                                .param("clusterUuid",clusterUuid)
+                                                .param("vmUuid",vmUuid).execute();
+                                    }
+                                }
+
+
+                                LocalStorageResourceRefVO vo = Q.New(LocalStorageResourceRefVO.class)
+                                        .eq(LocalStorageResourceRefVO_.resourceUuid, volumeRefVO.getResourceUuid())
+                                        .eq(LocalStorageResourceRefVO_.primaryStorageUuid, volumeRefVO.getPrimaryStorageUuid())
+                                        .eq(LocalStorageResourceRefVO_.hostUuid, msg.getDestHostUuid())
+                                        .find();
+                                reply.setInventory(LocalStorageResourceRefInventory.valueOf(vo));
+                            }
+                        }.execute();
+
                         bus.reply(msg, reply);
                     }
                 });
@@ -709,6 +813,9 @@ public class LocalStorageBase extends PrimaryStorageBase {
     }
 
     private void handle(final DownloadImageToPrimaryStorageCacheMsg msg) {
+        ImageInventory imageInventory = msg.getImage();
+        // If image actualSize is null, Default allow distribute image
+        long imageActualSize = imageInventory.getActualSize() != null ? imageInventory.getActualSize() : 0 ;
         final DownloadImageToPrimaryStorageCacheReply reply = new DownloadImageToPrimaryStorageCacheReply();
         final List<String> hostUuids;
         if (msg.getHostUuid() == null) {
@@ -720,10 +827,12 @@ public class LocalStorageBase extends PrimaryStorageBase {
                             " from LocalStorageHostRefVO h, HostVO host" +
                             " where h.primaryStorageUuid = :puuid" +
                             " and h.hostUuid = host.uuid" +
-                            " and host.status = :hstatus";
+                            " and host.status = :hstatus" +
+                            " and h.availablePhysicalCapacity >= :availablePhysicalCapacity";
                     TypedQuery<String> q = dbf.getEntityManager().createQuery(sql, String.class);
                     q.setParameter("puuid", self.getUuid());
                     q.setParameter("hstatus", HostStatus.Connected);
+                    q.setParameter("availablePhysicalCapacity", imageActualSize);
                     return q.getResultList();
                 }
             }.call();
@@ -1075,7 +1184,7 @@ public class LocalStorageBase extends PrimaryStorageBase {
     private void handle(RemoveHostFromLocalStorageMsg msg) {
         LocalStorageHostRefVO ref = Q.New(LocalStorageHostRefVO.class)
                 .eq(LocalStorageHostRefVO_.hostUuid, msg.getHostUuid())
-                .eq(LocalStorageHostRefVO_.primaryStorageUuid, self.getUuid())
+                .eq(LocalStorageHostRefVO_.primaryStorageUuid, msg.getPrimaryStorageUuid())
                 .find();
 
         if (ref != null) {
@@ -1108,6 +1217,12 @@ public class LocalStorageBase extends PrimaryStorageBase {
 
             @Override
             protected void scripts() {
+
+                // delete the image cache
+                sql("delete from ImageCacheVO ic where ic.primaryStorageUuid = :psUuid and" +
+                        " ic.installUrl like :url").param("psUuid", self.getUuid())
+                        .param("url", String.format("%%%s%%", hostUuid)).execute();
+
                 List<LocalStorageResourceRefVO> refs = sql(
                         "select ref from LocalStorageResourceRefVO ref where ref.hostUuid = :huuid" +
                                 " and ref.primaryStorageUuid = :psUuid", LocalStorageResourceRefVO.class
@@ -1163,11 +1278,6 @@ public class LocalStorageBase extends PrimaryStorageBase {
                                 " the local storage[name:%s, uuid:%s]", vmUuidsToDelete, hostUuid, self.getName(), self.getUuid()));
                     }
                 }
-
-                // delete the image cache
-                sql("delete from ImageCacheVO ic where ic.primaryStorageUuid = :psUuid and" +
-                        " ic.installUrl like :url").param("psUuid", self.getUuid())
-                        .param("url", String.format("%%%s%%", hostUuid)).execute();
 
                 for (LocalStorageResourceRefVO ref : refs) {
                     dbf.getEntityManager().merge(ref);
@@ -2108,5 +2218,23 @@ public class LocalStorageBase extends PrimaryStorageBase {
         LocalStorageHypervisorFactory f = getHypervisorBackendFactory(hvType);
         LocalStorageHypervisorBackend bkd = f.getHypervisorBackend(self);
         bkd.attachHook(clusterUuid, completion);
+    }
+
+    @Override
+    protected void checkImageIfNeedToDownload(DownloadIsoToPrimaryStorageMsg msg){
+        logger.debug("check if image exist in disabled primary storage");
+        if(self.getState() != PrimaryStorageState.Disabled){
+            return ;
+        }
+        if( !Q.New(ImageCacheVO.class)
+                .eq(ImageCacheVO_.primaryStorageUuid, self.getUuid())
+                .eq(ImageCacheVO_.imageUuid, msg.getIsoSpec().getInventory().getUuid())
+                .like(ImageCacheVO_.installUrl, String.format("%%hostUuid://%s%%", msg.getDestHostUuid()))
+                .isExists()){
+
+            throw new OperationFailureException(errf.stringToOperationError(
+                    String.format("cannot attach ISO to a primary storage[uuid:%s] which is disabled",
+                            self.getUuid())));
+        }
     }
 }

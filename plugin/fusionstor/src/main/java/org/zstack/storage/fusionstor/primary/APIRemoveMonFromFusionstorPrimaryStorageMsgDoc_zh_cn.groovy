@@ -7,24 +7,24 @@ doc {
 
     category "未知类别"
 
-    desc "在这里填写API描述"
+    desc """在这里填写API描述"""
 
     rest {
         request {
 			url "DELETE /v1/primary-storage/fusionstor/{uuid}/mons"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIRemoveMonFromFusionstorPrimaryStorageMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
 				column {
 					name "uuid"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "资源的UUID，唯一标示该资源"
 					location "url"
 					type "String"
@@ -34,7 +34,7 @@ doc {
 				}
 				column {
 					name "monHostnames"
-					enclosedIn "params"
+					enclosedIn ""
 					desc ""
 					location "body"
 					type "List"

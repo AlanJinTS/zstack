@@ -7,24 +7,24 @@ doc {
 
     category "securityGroup"
 
-    desc "用户可以使用CreateSecurityGroup来创建一个安全组"
+    desc """用户可以使用CreateSecurityGroup来创建一个安全组"""
 
     rest {
         request {
 			url "POST /v1/security-groups"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APICreateSecurityGroupMsg.class
 
-			desc "用户可以使用CreateSecurityGroup来创建一个安全组"
-
+            desc """用户可以使用CreateSecurityGroup来创建一个安全组"""
+            
 			params {
 
 				column {
 					name "name"
-					enclosedIn ""
+					enclosedIn "params"
 					desc "资源名称"
 					location "body"
 					type "String"
@@ -34,7 +34,7 @@ doc {
 				}
 				column {
 					name "description"
-					enclosedIn ""
+					enclosedIn "params"
 					desc "资源的详细描述"
 					location "body"
 					type "String"
@@ -44,7 +44,7 @@ doc {
 				}
 				column {
 					name "resourceUuid"
-					enclosedIn ""
+					enclosedIn "params"
 					desc "用户指定的资源UUID，若指定，系统不会为该资源随机分配UUID"
 					location "body"
 					type "String"

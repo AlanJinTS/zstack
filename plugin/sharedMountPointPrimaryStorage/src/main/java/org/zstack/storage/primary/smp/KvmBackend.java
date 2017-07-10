@@ -5,6 +5,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.zstack.compute.vm.ImageBackupStorageSelector;
 import org.zstack.core.cloudbus.CloudBusCallBack;
 import org.zstack.core.componentloader.PluginRegistry;
+import org.zstack.core.db.Q;
 import org.zstack.core.db.SimpleQuery;
 import org.zstack.core.db.SimpleQuery.Op;
 import org.zstack.core.thread.ChainTask;
@@ -49,12 +50,15 @@ import org.zstack.utils.function.Function;
 import org.zstack.utils.logging.CLogger;
 import org.zstack.utils.path.PathUtil;
 
+import static java.util.Arrays.asList;
+import static org.zstack.core.Platform.argerr;
 import static org.zstack.core.Platform.operr;
 
 import javax.persistence.Tuple;
 import javax.persistence.TypedQuery;
 import java.io.File;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Created by xing5 on 2016/3/26.
@@ -72,6 +76,7 @@ public class KvmBackend extends HypervisorBackend {
     protected PluginRegistry pluginRgty;
 
     public static class AgentCmd {
+        public String mountPoint;
     }
 
     public static class AgentRsp {
@@ -83,9 +88,12 @@ public class KvmBackend extends HypervisorBackend {
 
     public static class ConnectCmd extends AgentCmd {
         public String uuid;
-        public String mountPoint;
+        public List<String> existUuids;
     }
 
+    public static class ConnectRsp extends AgentRsp {
+        public boolean isFirst = false;
+    }
 
     @ApiTimeout(apiClasses = {APICreateVmInstanceMsg.class})
     public static class CreateVolumeFromCacheCmd extends AgentCmd {
@@ -214,6 +222,8 @@ public class KvmBackend extends HypervisorBackend {
     }
 
     private <T extends AgentRsp> void httpCall(String path, final String hostUuid, AgentCmd cmd, boolean noCheckStatus, final Class<T> rspType, final ReturnValueCompletion<T> completion) {
+        cmd.mountPoint = self.getMountPath();
+
         KVMHostAsyncHttpCallMsg msg = new KVMHostAsyncHttpCallMsg();
         msg.setHostUuid(hostUuid);
         msg.setPath(path);
@@ -258,15 +268,18 @@ public class KvmBackend extends HypervisorBackend {
         });
     }
 
-    private void connect(String hostUuid, final Completion completion) {
+    private void connect(String hostUuid, final ReturnValueCompletion<Boolean> completion) {
         ConnectCmd cmd = new ConnectCmd();
         cmd.uuid = self.getUuid();
         cmd.mountPoint = self.getMountPath();
+        cmd.existUuids = Q.New(PrimaryStorageVO.class).select(PrimaryStorageVO_.uuid)
+                .eq(PrimaryStorageVO_.type, SMPConstants.SMP_TYPE)
+                .listValues();
 
-        httpCall(CONNECT_PATH, hostUuid, cmd, true, AgentRsp.class, new ReturnValueCompletion<AgentRsp>(completion) {
+        httpCall(CONNECT_PATH, hostUuid, cmd, true, ConnectRsp.class, new ReturnValueCompletion<ConnectRsp>(completion) {
             @Override
-            public void success(AgentRsp rsp) {
-                completion.success();
+            public void success(ConnectRsp rsp) {
+                completion.success(rsp.isFirst);
             }
 
             @Override
@@ -1075,7 +1088,7 @@ public class KvmBackend extends HypervisorBackend {
 
                                 @Override
                                 public void fail(ErrorCode errorCode) {
-                                    //TODO
+                                    //TODO GC
                                     logger.warn(String.format("failed to delete %s, %s", temporaryTemplatePath, errorCode));
                                 }
                             });
@@ -1132,7 +1145,7 @@ public class KvmBackend extends HypervisorBackend {
 
                             @Override
                             public void fail(ErrorCode errorCode) {
-                                //TODO: cleanup
+                                //TODO: GC
                                 logger.warn(String.format("failed to delete %s on shared mount point primary storage[uuid: %s], %s; need a cleanup", temporaryTemplatePath, self.getUuid(), errorCode));
                             }
                         });
@@ -1321,6 +1334,24 @@ public class KvmBackend extends HypervisorBackend {
         }
     }
 
+    private void cleanInvalidIdFile(List<String> hostUuids){
+        for(String huuid :hostUuids){
+            String idFilePath = PathUtil.join(self.getMountPath(), "zstack_smp_id_file", self.getUuid());
+            DeleteBitsCmd cmd = new DeleteBitsCmd();
+            cmd.path = idFilePath;
+
+            httpCall(DELETE_BITS_PATH, huuid, cmd, true, AgentRsp.class, new ReturnValueCompletion<AgentRsp>(null) {
+                @Override
+                public void success(AgentRsp rsp) {}
+
+                @Override
+                public void fail(ErrorCode errorCode) {
+                    logger.warn(String.format("fail to clean invalid id file %s in host[uuid:%s], please delete it", idFilePath, huuid));
+                }
+            });
+        }
+    }
+
     @Override
     void connectByClusterUuid(final String clusterUuid, final Completion completion) {
         List<String> huuids = findConnectedHostByClusterUuid(clusterUuid, false);
@@ -1331,21 +1362,34 @@ public class KvmBackend extends HypervisorBackend {
         }
 
         class Result {
-            List<ErrorCode> errorCodes = new ArrayList<ErrorCode>();
-            List<String> huuids = new ArrayList<String>();
+            Set<ErrorCode> errorCodes = new HashSet<>();
+            List<String> huuids = Collections.synchronizedList(new ArrayList<String>());
+            List<String> firstAccessHostUuids = Collections.synchronizedList(new ArrayList<String>());
         }
 
         final Result ret = new Result();
         final AsyncLatch latch = new AsyncLatch(huuids.size(), new NoErrorCompletion(completion) {
             @Override
             public void done() {
+                if(ret.firstAccessHostUuids.size() > 1){
+                    ret.huuids.addAll(ret.firstAccessHostUuids);
+                    ret.errorCodes.add(operr(
+                            "hosts[uuid:%s] have the same mount path, but actually mount different storage.",
+                            ret.firstAccessHostUuids
+                    ));
+                    cleanInvalidIdFile(ret.firstAccessHostUuids);
+                }
+
                 if (!ret.errorCodes.isEmpty()) {
-                    String mountPathErrorInfo = "Can't find mount path on ";
+                    String mountPathErrorInfo = "Can't access mount path on ";
                     for(String hostUuid : ret.huuids) {
                         mountPathErrorInfo += String.format("host[uuid:%s] ", hostUuid);
                     }
-                    completion.fail(errf.stringToOperationError(String.format("unable to connect the shared mount point storage[uuid:%s, name:%s] to" +
-                            " the cluster[uuid:%s], %s", self.getUuid(), self.getName(), clusterUuid, mountPathErrorInfo), ret.errorCodes));
+                    completion.fail(errf.stringToOperationError(
+                            String.format("unable to connect the shared mount point storage[uuid:%s, name:%s] to the cluster[uuid:%s], %s",
+                                    self.getUuid(), self.getName(), clusterUuid, mountPathErrorInfo),
+                            new ArrayList<>(ret.errorCodes)
+                    ));
                 } else {
                     completion.success();
                 }
@@ -1353,9 +1397,16 @@ public class KvmBackend extends HypervisorBackend {
         });
 
         for (String huuid : huuids) {
-            connect(huuid, new Completion(latch) {
+            connect(huuid, new ReturnValueCompletion<Boolean>(latch) {
                 @Override
-                public void success() {
+                public void success(Boolean isFirst) {
+                    // If cluster has multi hosts, they have the same mount point
+                    // the host first to access mount point will create a ps_uuid_file
+                    // if more than one host created ps_uuid_file, it means that hosts mount different storage
+                    // isFirst is true when the host is the first one access mount point
+                    if(isFirst){
+                        ret.firstAccessHostUuids.add(huuid);
+                    }
                     latch.ack();
                 }
 
@@ -1375,6 +1426,7 @@ public class KvmBackend extends HypervisorBackend {
         final GetVolumeSizeCmd cmd = new GetVolumeSizeCmd();
         cmd.installPath = msg.getInstallPath();
         cmd.volumeUuid = msg.getVolumeUuid();
+        cmd.mountPoint = self.getMountPath();
         new KvmCommandSender(hostUuid).send(cmd, GET_VOLUME_SIZE_PATH, new KvmCommandFailureChecker() {
             @Override
             public ErrorCode getError(KvmResponseWrapper wrapper) {
@@ -1462,9 +1514,18 @@ public class KvmBackend extends HypervisorBackend {
 
     private void handle(final InitKvmHostMsg msg) {
         final InitKvmHostReply reply = new InitKvmHostReply();
-        connect(msg.getHostUuid(), new Completion(msg) {
+        connect(msg.getHostUuid(), new ReturnValueCompletion<Boolean>(msg) {
             @Override
-            public void success() {
+            public void success(Boolean isFirst) {
+                if(isFirst){
+                    logger.warn(String.format("host[uuid:%s] might mount storage which is different from SMP[uuid:%s], please check it",
+                            msg.getHostUuid(), msg.getPrimaryStorageUuid()));
+                    /* TODO: find a way to confirm it, and do not block add host
+                    reply.setError(argerr("host[uuid:%s] might mount storage which is different from SMP[uuid:%s], please check it",
+                            msg.getHostUuid(), msg.getPrimaryStorageUuid()));
+                    */
+                    cleanInvalidIdFile(asList(msg.getHostUuid()));
+                }
                 bus.reply(msg, reply);
             }
 

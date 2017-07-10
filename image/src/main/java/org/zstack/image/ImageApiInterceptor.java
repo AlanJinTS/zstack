@@ -8,8 +8,6 @@ import org.zstack.core.db.SimpleQuery.Op;
 import org.zstack.core.errorcode.ErrorFacade;
 import org.zstack.header.apimediator.ApiMessageInterceptionException;
 import org.zstack.header.apimediator.ApiMessageInterceptor;
-import org.zstack.header.apimediator.StopRoutingException;
-import org.zstack.header.errorcode.SysErrors;
 import org.zstack.header.image.*;
 import org.zstack.header.image.ImageConstant.ImageMediaType;
 import org.zstack.header.message.APIMessage;
@@ -25,10 +23,10 @@ import org.zstack.header.volume.VolumeState;
 import org.zstack.header.volume.VolumeStatus;
 import org.zstack.header.volume.VolumeVO;
 
+import java.util.List;
+
 import static org.zstack.core.Platform.argerr;
 import static org.zstack.core.Platform.operr;
-
-import java.util.List;
 
 /**
  * Created with IntelliJ IDEA.
@@ -55,8 +53,6 @@ public class ImageApiInterceptor implements ApiMessageInterceptor {
     public APIMessage intercept(APIMessage msg) throws ApiMessageInterceptionException {
         if (msg instanceof APIAddImageMsg) {
             validate((APIAddImageMsg)msg);
-        } else if (msg instanceof APIDeleteImageMsg) {
-            validate((APIDeleteImageMsg)msg);
         } else if (msg instanceof APICreateRootVolumeTemplateFromRootVolumeMsg) {
             validate((APICreateRootVolumeTemplateFromRootVolumeMsg) msg);
         } else if (msg instanceof APICreateRootVolumeTemplateFromVolumeSnapshotMsg) {
@@ -105,14 +101,6 @@ public class ImageApiInterceptor implements ApiMessageInterceptor {
         }
     }
 
-    private void validate(APIDeleteImageMsg msg) {
-        if (!dbf.isExist(msg.getUuid(), ImageVO.class)) {
-            APIDeleteImageEvent evt = new APIDeleteImageEvent(msg.getId());
-            bus.publish(evt);
-            throw new StopRoutingException();
-        }
-    }
-
     private void validate(APIAddImageMsg msg) {
         if (ImageMediaType.ISO.toString().equals(msg.getMediaType())) {
             msg.setFormat(ImageConstant.ISO_FORMAT_STRING);
@@ -152,6 +140,13 @@ public class ImageApiInterceptor implements ApiMessageInterceptor {
                                 msg.getBackupStorageUuids(), BackupStorageStatus.Connected, BackupStorageState.Enabled));
             }
             msg.setBackupStorageUuids(bsUuids);
+        }
+
+        // compatible with file:/// and /
+        if (msg.getUrl().startsWith("/")) {
+            msg.setUrl(String.format("file://%s", msg.getUrl()));
+        } else if (!msg.getUrl().startsWith("file:///") && !msg.getUrl().startsWith("http://") && !msg.getUrl().startsWith("https://")) {
+            throw new ApiMessageInterceptionException(argerr("url must starts with 'file:///', 'http://', 'https://' or '/'"));
         }
     }
 }

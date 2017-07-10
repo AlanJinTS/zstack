@@ -1,11 +1,15 @@
 package org.zstack.test.integration.core.gc
 
+import org.apache.commons.collections.map.HashedMap
 import org.zstack.core.Platform
 import org.zstack.core.cloudbus.EventFacade
 import org.zstack.core.db.DatabaseFacade
+import org.zstack.core.db.SQL
 import org.zstack.core.errorcode.ErrorFacade
 import org.zstack.core.gc.*
 import org.zstack.testlib.SubCase
+import org.zstack.utils.Utils
+import org.zstack.utils.logging.CLogger
 
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -17,7 +21,7 @@ class EventBasedGarbageCollectorCase extends SubCase {
     static final String EVENT_PATH = "/test/gc"
     static final String EVENT_PATH2 = "/test/gc2"
     static final String EVENT_PATH3 = "/test/gc3"
-
+    private final static CLogger logger = Utils.getLogger(EventBasedGarbageCollectorCase.class)
 
     DatabaseFacade dbf
     EventFacade evtf
@@ -69,7 +73,7 @@ class EventBasedGarbageCollectorCase extends SubCase {
         }
     }
 
-    static Closure<EventBasedGCInDbBehavior> testLogicForJobLoadedFromDb
+    static Map<String, Closure<EventBasedGCInDbBehavior>> testLogicForJobLoadedFromDbMap = new HashedMap<>()
 
     static enum EventBasedGCInDbBehavior {
         SUCCESS,
@@ -100,7 +104,9 @@ class EventBasedGarbageCollectorCase extends SubCase {
 
         @Override
         protected void triggerNow(GCCompletion completion) {
-            EventBasedGCInDbBehavior ret = testLogicForJobLoadedFromDb(this)
+
+            assert null != testLogicForJobLoadedFromDbMap.get(name)
+            EventBasedGCInDbBehavior ret = testLogicForJobLoadedFromDbMap.get(name)(this)
 
             if (ret == EventBasedGCInDbBehavior.SUCCESS) {
                 completion.success()
@@ -114,7 +120,7 @@ class EventBasedGarbageCollectorCase extends SubCase {
         }
     }
 
-    static Closure<EventBasedGCInDbBehavior> testTriggerNowForJobLoadedFromDb
+    static Map<String, Closure<EventBasedGCInDbBehavior>> testTriggerNowForJobLoadedFromDbMap = new HashedMap<>()
 
     static class EventBasedGCInDbTriggerNow extends EventBasedGarbageCollector {
         Closure trigger = { true }
@@ -139,7 +145,8 @@ class EventBasedGarbageCollectorCase extends SubCase {
 
         @Override
         protected void triggerNow(GCCompletion completion) {
-            EventBasedGCInDbBehavior ret = testTriggerNowForJobLoadedFromDb(this)
+            assert null != testTriggerNowForJobLoadedFromDbMap.get(name)
+            EventBasedGCInDbBehavior ret = testTriggerNowForJobLoadedFromDbMap.get(name)(this)
 
             if (ret == EventBasedGCInDbBehavior.SUCCESS) {
                 completion.success()
@@ -193,8 +200,10 @@ class EventBasedGarbageCollectorCase extends SubCase {
 
         // trigger again, confirm the event is no longer hooked
         evtf.fire(EVENT_PATH, "trigger it")
-        TimeUnit.SECONDS.sleep(1)
-        assert count == 1
+
+        retryInSecs {
+            assert count == 1
+        }
     }
 
     void testEventBasedGCFailure() {
@@ -251,8 +260,11 @@ class EventBasedGarbageCollectorCase extends SubCase {
 
         // trigger again, confirm the event is no longer hooked
         evtf.fire(EVENT_PATH, "trigger it")
-        TimeUnit.SECONDS.sleep(1)
-        assert count == 1
+
+        retryInSecs {
+            assert count == 1
+        }
+
     }
 
     void testEventBasedGCConcurrent() {
@@ -303,12 +315,13 @@ class EventBasedGarbageCollectorCase extends SubCase {
         evtf.fire(EVENT_PATH, "trigger it")
 
         // wait for EventBasedGarbageCollector.fail() called
-        TimeUnit.SECONDS.sleep(2)
-
         latch.await(10, TimeUnit.SECONDS)
-        GarbageCollectorVO vo = dbf.findByUuid(gc.uuid, GarbageCollectorVO.class)
-        assert vo.status == GCStatus.Idle
-        dbf.remove(vo)
+
+        retryInSecs {
+            GarbageCollectorVO vo = dbf.findByUuid(gc.uuid, GarbageCollectorVO.class)
+            assert vo.status == GCStatus.Idle
+            dbf.remove(vo)
+        }
     }
 
     void testTwoEventsTriggeredGC() {
@@ -343,14 +356,17 @@ class EventBasedGarbageCollectorCase extends SubCase {
         evtf.fire(EVENT_PATH2, "trigger it")
         TimeUnit.SECONDS.sleep(1)
         evtf.fire(EVENT_PATH3, "trigger it")
-        assert count == 2
+
+        retryInSecs {
+            assert count == 2
+        }
     }
 
     void testLoadedOrphanJobCancel() {
         // create GC job just in the database
         def gc = new EventBasedGCInDb()
-        gc.name = "test"
-        gc.NAME = "testLoadedOrphanJobSuccess"
+        gc.name = "testLoadedOrphanJobCancel"
+        gc.NAME = "testLoadedOrphanJobCancel"
         gc.description = "description"
         gc.context = new Context()
         gc.context.text = "something"
@@ -361,21 +377,24 @@ class EventBasedGarbageCollectorCase extends SubCase {
         vo.setManagementNodeUuid(null)
         dbf.update(vo)
 
-        testLogicForJobLoadedFromDb = { return EventBasedGCInDbBehavior.CANCEL }
+        Closure<EventBasedGCInDbBehavior> testLogicForJobLoadedFromDb = { return EventBasedGCInDbBehavior.CANCEL }
+        testLogicForJobLoadedFromDbMap.put(gc.name,testLogicForJobLoadedFromDb)
+        logger.debug(String.format("testLogicForJobLoadedFromDbMap put gc.name:%s",gc.name))
 
         // load orphan jobs
         gcMgr.managementNodeReady()
         evtf.fire(EVENT_PATH, "trigger it")
-        TimeUnit.SECONDS.sleep(1)
 
-        assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        retryInSecs {
+            assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        }
     }
 
     void testLoadedOrphanJobFailure() {
         // create GC job just in the database
         def gc = new EventBasedGCInDb()
-        gc.name = "test"
-        gc.NAME = "testLoadedOrphanJobSuccess"
+        gc.name = "testLoadedOrphanJobFailure"
+        gc.NAME = "testLoadedOrphanJobFailure"
         gc.description = "description"
         gc.context = new Context()
         gc.context.text = "something"
@@ -386,22 +405,24 @@ class EventBasedGarbageCollectorCase extends SubCase {
         vo.setManagementNodeUuid(null)
         dbf.update(vo)
 
-        testLogicForJobLoadedFromDb = { return EventBasedGCInDbBehavior.FAIL }
+        Closure<EventBasedGCInDbBehavior> testLogicForJobLoadedFromDb = { return EventBasedGCInDbBehavior.FAIL }
+        testLogicForJobLoadedFromDbMap.put(gc.name,testLogicForJobLoadedFromDb)
 
         // load orphan jobs
         gcMgr.managementNodeReady()
         evtf.fire(EVENT_PATH, "trigger it")
-        TimeUnit.SECONDS.sleep(1)
 
-        vo = dbf.findByUuid(gc.uuid, GarbageCollectorVO.class)
-        assert vo.status == GCStatus.Idle
-        dbf.remove(vo)
+        retryInSecs {
+            vo = dbf.findByUuid(gc.uuid, GarbageCollectorVO.class)
+            assert vo.status == GCStatus.Idle
+            dbf.remove(vo)
+        }
     }
 
     void testLoadedOrphanJobTriggerNow() {
         // create GC job just in the database
         def gc = new EventBasedGCInDbTriggerNow()
-        gc.name = "test"
+        gc.name = "testLoadedOrphanJobTriggerNow"
         gc.NAME = "testLoadedOrphanJobTriggerNow"
         gc.description = "description"
         gc.context = new Context()
@@ -414,23 +435,25 @@ class EventBasedGarbageCollectorCase extends SubCase {
         dbf.update(vo)
 
         boolean called = false
-        testTriggerNowForJobLoadedFromDb = {
+        Closure<EventBasedGCInDbBehavior> testTriggerNowForJobLoadedFromDb = {
             called = true
             return EventBasedGCInDbBehavior.SUCCESS
         }
+        testTriggerNowForJobLoadedFromDbMap.put(gc.name, testTriggerNowForJobLoadedFromDb)
 
         // load orphan jobs
         gcMgr.managementNodeReady()
 
-        TimeUnit.SECONDS.sleep(1)
-        assert called
-        assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        retryInSecs {
+            assert called
+            assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        }
     }
 
     void testLoadedOrphanJobSuccess() {
         // create GC job just in the database
         def gc = new EventBasedGCInDb()
-        gc.name = "test"
+        gc.name = "testLoadedOrphanJobSuccess"
         gc.NAME = "testLoadedOrphanJobSuccess"
         gc.description = "description"
         gc.context = new Context()
@@ -450,7 +473,7 @@ class EventBasedGarbageCollectorCase extends SubCase {
         Context ctx = null
         String loadedJobId = null
 
-        testLogicForJobLoadedFromDb = { EventBasedGCInDb g ->
+        Closure<EventBasedGCInDbBehavior> testLogicForJobLoadedFromDb = { EventBasedGCInDb g ->
             name = g.name
             description = g.description
             ctx = g.context
@@ -460,28 +483,27 @@ class EventBasedGarbageCollectorCase extends SubCase {
             latch.countDown()
             return EventBasedGCInDbBehavior.SUCCESS
         }
+        testLogicForJobLoadedFromDbMap.put(gc.name,testLogicForJobLoadedFromDb)
 
-        // load orphan jobs
+        // load orphan jobs and run trigger
         gcMgr.managementNodeReady()
-
         evtf.fire(EVENT_PATH, "trigger it")
         latch.await(10, TimeUnit.SECONDS)
-        assert count == 1
-        assert name == gc.name
-        assert description == gc.description
-        assert ctx != null
-        assert ctx.text == gc.context.text
-
-        // wait 1s for the job doing success()
-        TimeUnit.SECONDS.sleep(1)
-        assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        retryInSecs{
+            assert count == 1
+            assert name == gc.name
+            assert description == gc.description
+            assert ctx != null
+            assert ctx.text == gc.context.text
+            assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        }
     }
 
     void testLoadedOrphanJobScan() {
         // create GC job just in the database
         def gc = new EventBasedGCInDb()
-        gc.name = "test"
-        gc.NAME = "testLoadedOrphanJobSuccess"
+        gc.name = "testLoadedOrphanJobScan"
+        gc.NAME = "testLoadedOrphanJobScan"
         gc.description = "description"
         gc.context = new Context()
         gc.context.text = "something"
@@ -492,24 +514,21 @@ class EventBasedGarbageCollectorCase extends SubCase {
         vo.setManagementNodeUuid(null)
         dbf.update(vo)
 
+        Closure<EventBasedGCInDbBehavior> testLogicForJobLoadedFromDb = { return EventBasedGCInDbBehavior.SUCCESS }
+        testLogicForJobLoadedFromDbMap.put(gc.name,testLogicForJobLoadedFromDb)
+
         GCGlobalConfig.SCAN_ORPHAN_JOB_INTERVAL.updateValue(1)
         gcMgr.start()
 
-        TimeUnit.SECONDS.sleep(2)
-
-        testLogicForJobLoadedFromDb = { return EventBasedGCInDbBehavior.SUCCESS }
-
-        evtf.fire(EVENT_PATH, "trigger it")
-
-        TimeUnit.SECONDS.sleep(1)
-
-        assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        retryInSecs {
+            assert dbFindByUuid(gc.uuid, GarbageCollectorVO.class).status == GCStatus.Done
+        }
     }
 
     void testEventBasedGCCancelByApi() {
         int count = 0
         def gc = new EventBasedGC1()
-        gc.NAME = "testEventBasedGCCancel"
+        gc.NAME = "testEventBasedGCCancelByApi"
         gc.testLogic = { GCCompletion completion ->
             count ++
             completion.cancel()
@@ -526,9 +545,11 @@ class EventBasedGarbageCollectorCase extends SubCase {
 
         TimeUnit.SECONDS.sleep(1)
 
-        // trigger again, confirm the event is no longer hooked
-        assert !dbIsExists(gc.uuid, GarbageCollectorVO.class)
-        assert count == 0
+        retryInSecs {
+            // trigger again, confirm the event is no longer hooked
+            assert !dbIsExists(gc.uuid, GarbageCollectorVO.class)
+            assert count == 0
+        }
     }
 
     @Override
@@ -554,6 +575,6 @@ class EventBasedGarbageCollectorCase extends SubCase {
 
     @Override
     void clean() {
-        // nothing
+        SQL.New(GarbageCollectorVO.class).delete()
     }
 }

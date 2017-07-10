@@ -1,28 +1,30 @@
 package org.zstack.header.cluster
 
+import org.zstack.header.cluster.APIDeleteClusterEvent
+
 doc {
     title "DeleteCluster"
 
     category "cluster"
 
-    desc "管理员可以使用DeleteCluster命令来删除一个集群"
+    desc """管理员可以使用DeleteCluster命令来删除一个集群"""
 
     rest {
         request {
 			url "DELETE /v1/clusters/{uuid}"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIDeleteClusterMsg.class
 
-            desc "管理员可以使用DeleteCluster命令来删除一个集群"
+            desc """管理员可以使用DeleteCluster命令来删除一个集群"""
             
 			params {
 
 				column {
 					name "uuid"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "资源的UUID，唯一标示该资源"
 					location "url"
 					type "String"
@@ -32,7 +34,7 @@ doc {
 				}
 				column {
 					name "deleteMode"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "删除模式"
 					location "body"
 					type "String"

@@ -93,11 +93,7 @@ public class ZSClient {
                 return;
             }
 
-            api.resultFromWebHook = res;
-            synchronized (api) {
-                api.notify();
-            }
-
+            api.wakeUpFromWebHook(res);
             rsp.setStatus(200);
             rsp.getWriter().write("");
         } catch (Exception e) {
@@ -128,13 +124,32 @@ public class ZSClient {
         InternalCompletion completion;
         String jobUuid = UUID.randomUUID().toString().replaceAll("-", "");
 
-        ApiResult resultFromWebHook;
+        private ApiResult resultFromWebHook;
 
         Api(AbstractAction action) {
             this.action = action;
             info = action.getRestInfo();
             if (action.apiId != null) {
                 jobUuid = action.apiId;
+            }
+        }
+
+        void wakeUpFromWebHook(ApiResult res) {
+            if (completion == null) {
+                resultFromWebHook = res;
+                synchronized (this) {
+                    this.notifyAll();
+                }
+            } else {
+                try {
+                    completion.complete(res);
+                } catch (Throwable t) {
+                    res = new ApiResult();
+                    res.error = new ErrorCode();
+                    res.error.code = Constants.INTERNAL_ERROR;
+                    res.error.details = t.getMessage();
+                    completion.complete(res);
+                }
             }
         }
 
@@ -198,22 +213,23 @@ public class ZSClient {
                     waittingApis.put(jobUuid, this);
                 }
 
-                Response response = http.newCall(request).execute();
-                if (!response.isSuccessful()) {
-                    return httpError(response.code(), response.body().string());
-                }
-
-                if (response.code() == 200 || response.code() == 204) {
-                    return writeApiResult(response);
-                } else if (response.code() == 202) {
-
-                    if (config.webHook != null) {
-                        return webHookResult();
-                    } else {
-                        return pollResult(response);
+                try (Response response = http.newCall(request).execute()) {
+                    if (!response.isSuccessful()) {
+                        return httpError(response.code(), response.body().string());
                     }
-                } else {
-                    throw new ApiException(String.format("[Internal Error] the server returns an unknown status code[%s]", response.code()));
+
+                    if (response.code() == 200 || response.code() == 204) {
+                        return writeApiResult(response);
+                    } else if (response.code() == 202) {
+
+                        if (config.webHook != null) {
+                            return webHookResult();
+                        } else {
+                            return pollResult(response);
+                        }
+                    } else {
+                        throw new ApiException(String.format("[Internal Error] the server returns an unknown status code[%s]", response.code()));
+                    }
                 }
             } catch (IOException e) {
                 throw new ApiException(e);
@@ -250,26 +266,8 @@ public class ZSClient {
             if (completion == null) {
                 return syncWebHookResult();
             } else {
-                asyncWebHookResult();
                 return null;
             }
-        }
-
-        private void asyncWebHookResult() {
-            new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        completion.complete(syncWebHookResult());
-                    } catch (Throwable t) {
-                        ApiResult res = new ApiResult();
-                        res.error = new ErrorCode();
-                        res.error.code = Constants.INTERNAL_ERROR;
-                        res.error.details = t.getMessage();
-                        completion.complete(res);
-                    }
-                }
-            }).start();
         }
 
         private void fillQueryApiRequestBuilder(Request.Builder reqBuilder) {
@@ -295,7 +293,7 @@ public class ZSClient {
                 urlBuilder.addQueryParameter("limit", String.format("%s", qaction.limit));
             }
             if (qaction.start != null) {
-                urlBuilder.addQueryParameter("limit", String.format("%s", qaction.start));
+                urlBuilder.addQueryParameter("start", String.format("%s", qaction.start));
             }
             if (qaction.count != null) {
                 urlBuilder.addQueryParameter("count", String.format("%s", qaction.count));
@@ -357,6 +355,7 @@ public class ZSClient {
             }
 
             final Map<String, Object> params = new HashMap<>();
+
             for (String pname : action.getAllParameterNames()) {
                 if (varNames.contains(pname) || Constants.SESSION_ID.equals(pname)) {
                     // the field is set in URL variables
@@ -471,31 +470,32 @@ public class ZSClient {
                             .build();
 
                     try {
-                        Response response = http.newCall(req).execute();
-                        if (response.code() != 200 && response.code() != 503 && response.code() != 202) {
-                            done(httpError(response.code(), response.body().string()));
-                            return;
-                        }
+                        try (Response response = http.newCall(req).execute()) {
+                            if (response.code() != 200 && response.code() != 503 && response.code() != 202) {
+                                done(httpError(response.code(), response.body().string()));
+                                return;
+                            }
 
-                        // 200 means the task has been completed successfully,
-                        // or a 505 indicates a failure,
-                        // otherwise a 202 returned means it is still
-                        // in processing
-                        if (response.code() == 200 || response.code() == 503) {
-                            done(writeApiResult(response));
-                            return;
-                        }
+                            // 200 means the task has been completed successfully,
+                            // or a 505 indicates a failure,
+                            // otherwise a 202 returned means it is still
+                            // in processing
+                            if (response.code() == 200 || response.code() == 503) {
+                                done(writeApiResult(response));
+                                return;
+                            }
 
-                        count += interval;
-                        if (count >= expiredTime) {
-                            ApiResult res = new ApiResult();
-                            res.error = errorCode(
-                                    Constants.POLLING_TIMEOUT_ERROR,
-                                    "timeout of polling async API result",
-                                    String.format("polling result of api[%s] timeout after %s ms", action.getClass().getSimpleName(), timeout)
-                            );
+                            count += interval;
+                            if (count >= expiredTime) {
+                                ApiResult res = new ApiResult();
+                                res.error = errorCode(
+                                        Constants.POLLING_TIMEOUT_ERROR,
+                                        "timeout of polling async API result",
+                                        String.format("polling result of api[%s] timeout after %s ms", action.getClass().getSimpleName(), timeout)
+                                );
 
-                            done(res);
+                                done(res);
+                            }
                         }
                     } catch (Throwable e) {
                         //TODO: logging
@@ -539,20 +539,21 @@ public class ZSClient {
                         .build();
 
                 try {
-                    Response response = http.newCall(req).execute();
-                    if (response.code() != 200 && response.code() != 503 && response.code() != 202) {
-                        return httpError(response.code(), response.body().string());
-                    }
+                    try (Response response = http.newCall(req).execute()) {
+                        if (response.code() != 200 && response.code() != 503 && response.code() != 202) {
+                            return httpError(response.code(), response.body().string());
+                        }
 
-                    // 200 means the task has been completed
-                    // otherwise a 202 returned means it is still
-                    // in processing
-                    if (response.code() == 200 || response.code() == 503) {
-                        return writeApiResult(response);
-                    }
+                        // 200 means the task has been completed
+                        // otherwise a 202 returned means it is still
+                        // in processing
+                        if (response.code() == 200 || response.code() == 503) {
+                            return writeApiResult(response);
+                        }
 
-                    TimeUnit.MILLISECONDS.sleep(interval);
-                    current += interval;
+                        TimeUnit.MILLISECONDS.sleep(interval);
+                        current += interval;
+                    }
                 } catch (InterruptedException e) {
                     //ignore
                 } catch (IOException e) {

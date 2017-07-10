@@ -7,18 +7,18 @@ doc {
 
     category "host"
 
-    desc "重连物理机"
+    desc """重连物理机"""
 
     rest {
         request {
 			url "PUT /v1/hosts/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIReconnectHostMsg.class
 
-            desc "重新连接物理机"
+            desc """重新连接物理机"""
             
 			params {
 

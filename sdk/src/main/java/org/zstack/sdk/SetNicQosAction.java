@@ -78,11 +78,11 @@ public class SetNicQosAction extends AbstractAction {
 
     RestInfo getRestInfo() {
         RestInfo info = new RestInfo();
-        info.httpMethod = "POST";
-        info.path = "/vm-instances/{uuid}/qos";
+        info.httpMethod = "PUT";
+        info.path = "/vm-instances/{uuid}/actions";
         info.needSession = true;
         info.needPoll = true;
-        info.parameterName = "params";
+        info.parameterName = "setNicQos";
         return info;
     }
 

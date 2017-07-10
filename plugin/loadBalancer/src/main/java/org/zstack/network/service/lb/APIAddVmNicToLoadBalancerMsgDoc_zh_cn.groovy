@@ -7,18 +7,18 @@ doc {
 
     category "负载均衡"
 
-    desc "添加云主机网卡到负载均衡"
+    desc """添加云主机网卡到负载均衡"""
 
     rest {
         request {
 			url "POST /v1/load-balancers/listeners/{listenerUuid}/vm-instances/nics"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIAddVmNicToLoadBalancerMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

@@ -4,6 +4,9 @@ import org.springframework.beans.factory.annotation.Autowire;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Configurable;
 import org.zstack.core.componentloader.PluginRegistry;
+import org.zstack.core.config.GlobalConfigVO;
+import org.zstack.core.config.GlobalConfigVO_;
+import org.zstack.core.db.Q;
 import org.zstack.core.errorcode.ErrorFacade;
 import org.zstack.header.allocator.*;
 import org.zstack.header.core.ReturnValueCompletion;
@@ -13,6 +16,7 @@ import org.zstack.header.host.HostInventory;
 import org.zstack.header.host.HostVO;
 import org.zstack.header.vm.VmInstanceInventory;
 import org.zstack.utils.DebugUtils;
+import org.zstack.utils.SizeUtils;
 import org.zstack.utils.Utils;
 import org.zstack.utils.gson.JSONObjectUtil;
 import org.zstack.utils.logging.CLogger;
@@ -41,6 +45,8 @@ public class HostAllocatorChain implements HostAllocatorTrigger, HostAllocatorSt
     private HostAllocationPaginationInfo paginationInfo;
 
     private Set<String> seriesErrorWhenPagination = new HashSet<String>();
+
+    private MarshalResultFunction marshalResultFunction;
 
     @Autowired
     private ErrorFacade errf;
@@ -73,23 +79,24 @@ public class HostAllocatorChain implements HostAllocatorTrigger, HostAllocatorSt
         this.flows = flows;
     }
 
-    void reserveCapacity(final String hostUuid, final long cpu, final long memory) {
+    void reserveCapacity(final String hostUuid, final long requestCpu, final long requestMemory) {
         HostCapacityUpdater updater = new HostCapacityUpdater(hostUuid);
+        String reservedMemoryOfGlobalConfig = Q.New(GlobalConfigVO.class).select(GlobalConfigVO_.value).eq(GlobalConfigVO_.name,"reservedMemory").findValue();
         updater.run(new HostCapacityUpdaterRunnable() {
             @Override
             public HostCapacityVO call(HostCapacityVO cap) {
-                long availCpu = cap.getAvailableCpu() - cpu;
+                long availCpu = cap.getAvailableCpu() - requestCpu;
                 if (availCpu < 0) {
                     throw new UnableToReserveHostCapacityException(
-                            String.format("no enough CPU[%s] on the host[uuid:%s]", cpu, hostUuid));
+                            String.format("no enough CPU[%s] on the host[uuid:%s]", requestCpu, hostUuid));
                 }
 
                 cap.setAvailableCpu(availCpu);
 
-                long availMemory = cap.getAvailableMemory() - ratioMgr.calculateMemoryByRatio(hostUuid, memory);
-                if (availMemory < 0) {
+                long availMemory = cap.getAvailableMemory() - ratioMgr.calculateMemoryByRatio(hostUuid, requestMemory);
+                if (availMemory - SizeUtils.sizeStringToBytes(reservedMemoryOfGlobalConfig) < 0) {
                     throw new UnableToReserveHostCapacityException(
-                            String.format("no enough memory[%s] on the host[uuid:%s]", memory, hostUuid));
+                            String.format("no enough memory[%s] on the host[uuid:%s]", requestMemory, hostUuid));
                 }
 
                 cap.setAvailableMemory(availMemory);
@@ -100,7 +107,9 @@ public class HostAllocatorChain implements HostAllocatorTrigger, HostAllocatorSt
     }
 
     protected void marshalResult() {
-        Collections.shuffle(result);
+        if (marshalResultFunction != null) {
+            marshalResultFunction.marshal(result);
+        }
     }
 
     private void done() {
@@ -148,7 +157,7 @@ public class HostAllocatorChain implements HostAllocatorTrigger, HostAllocatorSt
                     return;
                 } catch (UnableToReserveHostCapacityException e) {
                     logger.debug(String.format("[Host Allocation]: %s on host[uuid:%s]. try next one",
-                            e.getMessage(), h.getUuid()));
+                            e.getMessage(), h.getUuid()), e);
                 }
             }
 
@@ -293,5 +302,10 @@ public class HostAllocatorChain implements HostAllocatorTrigger, HostAllocatorSt
     public void dryRun(HostAllocatorSpec spec, ReturnValueCompletion<List<HostInventory>> completion) {
         this.allocationSpec = spec;
         dryRun(completion);
+    }
+
+    @Override
+    public void setMarshalResultFunction(MarshalResultFunction func) {
+        marshalResultFunction = func;
     }
 }

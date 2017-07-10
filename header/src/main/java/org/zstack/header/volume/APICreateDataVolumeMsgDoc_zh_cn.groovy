@@ -1,22 +1,24 @@
 package org.zstack.header.volume
 
+import org.zstack.header.volume.APICreateDataVolumeEvent
+
 doc {
     title "CreateDataVolume"
 
     category "volume"
 
-    desc "创建云盘"
+    desc """创建云盘"""
 
     rest {
         request {
 			url "POST /v1/volumes/data"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APICreateDataVolumeMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

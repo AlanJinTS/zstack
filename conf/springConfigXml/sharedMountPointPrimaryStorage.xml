@@ -16,6 +16,8 @@
             <zstack:extension interface="org.zstack.header.storage.primary.PrimaryStorageFactory" />
             <zstack:extension interface="org.zstack.header.storage.snapshot.CreateTemplateFromVolumeSnapshotExtensionPoint" />
             <zstack:extension interface="org.zstack.header.host.HostDeleteExtensionPoint"/>
+            <zstack:extension interface="org.zstack.header.storage.primary.PrimaryStorageDetachExtensionPoint" />
+            <zstack:extension interface="org.zstack.storage.snapshot.PostMarkRootVolumeAsSnapshotExtension"/>
         </zstack:plugin>
     </bean>
 
@@ -23,6 +25,12 @@
         <zstack:plugin>
             <zstack:extension interface="org.zstack.storage.primary.smp.HypervisorFactory" />
             <zstack:extension interface="org.zstack.kvm.KVMHostConnectExtensionPoint" />
+        </zstack:plugin>
+    </bean>
+
+    <bean id="SharedMountPointApiInterceptor" class="org.zstack.storage.primary.smp.SharedMountPointApiInterceptor">
+        <zstack:plugin>
+            <zstack:extension interface="org.zstack.header.apimediator.ApiMessageInterceptor" />
         </zstack:plugin>
     </bean>
 </beans>

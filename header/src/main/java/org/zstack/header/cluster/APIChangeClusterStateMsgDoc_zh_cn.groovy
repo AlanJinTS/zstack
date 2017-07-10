@@ -1,22 +1,24 @@
 package org.zstack.header.cluster
 
+import org.zstack.header.cluster.APIChangeClusterStateEvent
+
 doc {
     title "ChangeClusterState"
 
     category "cluster"
 
-    desc "管理员可以使用ChangeClusterState来改变一个集群的可用状态"
+    desc """管理员可以使用ChangeClusterState来改变一个集群的可用状态"""
 
     rest {
         request {
 			url "PUT /v1/clusters/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIChangeClusterStateMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

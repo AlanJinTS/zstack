@@ -8,7 +8,6 @@ import org.zstack.core.cloudbus.CloudBusCallBack;
 import org.zstack.core.cloudbus.CloudBusListCallBack;
 import org.zstack.core.db.DatabaseFacade;
 import org.zstack.core.errorcode.ErrorFacade;
-import org.zstack.core.logging.Log;
 import org.zstack.core.timeout.ApiTimeoutManager;
 import org.zstack.header.core.Completion;
 import org.zstack.header.core.NoErrorCompletion;
@@ -67,8 +66,6 @@ public class FlatDnsBackend implements NetworkServiceDnsBackend, KVMHostConnectE
             completion.success();
             return;
         }
-
-        new Log(host.getUuid()).log(FlatNetworkLabel.SYNC_DNS);
 
         SetDnsCmd cmd = new SetDnsCmd();
         cmd.dns = dns;
@@ -168,7 +165,7 @@ public class FlatDnsBackend implements NetworkServiceDnsBackend, KVMHostConnectE
             @Override
             public KVMHostAsyncHttpCallMsg call(String huuid) {
                 SetDnsCmd cmd = new SetDnsCmd();
-                cmd.dns = dns;
+                cmd.dns = l3.getDns();
 
                 KVMHostAsyncHttpCallMsg msg = new KVMHostAsyncHttpCallMsg();
                 msg.setCommand(cmd);
@@ -186,7 +183,7 @@ public class FlatDnsBackend implements NetworkServiceDnsBackend, KVMHostConnectE
                 for (MessageReply reply : replies) {
                     String huuid = hostUuids.get(replies.indexOf(reply));
                     if (!reply.isSuccess()) {
-                        //TODO
+                        //TODO: GC
                         logger.warn(String.format("failed to apply dns%s to the kvm host[uuid:%s], %s", dns, huuid, reply.getError()));
                         continue;
                     }
@@ -194,7 +191,7 @@ public class FlatDnsBackend implements NetworkServiceDnsBackend, KVMHostConnectE
                     KVMHostAsyncHttpCallReply re = reply.castReply();
                     SetDnsRsp rsp = re.toResponse(SetDnsRsp.class);
                     if (!rsp.isSuccess()) {
-                        //TODO
+                        //TODO GC
                         logger.warn(String.format("failed to apply dns%s to the kvm host[uuid:%s], %s", dns, huuid, rsp.getError()));
                     }
                 }

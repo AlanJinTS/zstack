@@ -23,6 +23,7 @@ import org.zstack.header.core.encrypt.ENCRYPT;
 import org.zstack.header.errorcode.ErrorCode;
 import org.zstack.header.errorcode.SysErrors;
 import org.zstack.header.exception.CloudRuntimeException;
+import org.zstack.header.vo.BaseResource;
 import org.zstack.utils.*;
 import org.zstack.utils.data.StringTemplate;
 import org.zstack.utils.logging.CLogger;
@@ -43,6 +44,7 @@ import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static org.zstack.utils.CollectionDSL.e;
 import static org.zstack.utils.CollectionDSL.map;
@@ -74,6 +76,8 @@ public class Platform {
     }
 
     public static Set<Method> encryptedMethodsMap;
+
+    public static Map<String, String> childResourceToBaseResourceMap = new HashMap<>();
 
     private static Map<String, String> linkGlobalPropertyMap(String prefix) {
         Map<String, String> ret = new HashMap<String, String>();
@@ -116,7 +120,7 @@ public class Platform {
                 }
                 valueToSet = ret;
             } else {
-                String value = getGlobalProperty(name);
+                String value = propertiesMap.get(name);
                 if (value == null && at.defaultValue().equals(GlobalProperty.DEFAULT_NULL_STRING) && at.required()) {
                     throw new IllegalArgumentException(String.format("A required global property[%s] missing in zstack.properties", name));
                 }
@@ -194,12 +198,17 @@ public class Platform {
     }
 
     private static void linkGlobalProperty() {
-        List<Class> clzs = BeanUtils.scanClass("org.zstack", GlobalPropertyDefinition.class);
+        Set<Class<?>> clzs = reflections.getTypesAnnotatedWith(GlobalPropertyDefinition.class);
+
+        boolean noTrim = System.getProperty("DoNotTrimPropertyFile") != null;
 
         List<String> lst = new ArrayList<String>();
         Map<String, String> propertiesMap = new HashMap<String, String>();
         for (final String name: System.getProperties().stringPropertyNames()) {
             String value = System.getProperty(name);
+            if (!noTrim) {
+                value = value.trim();
+            }
             propertiesMap.put(name, value);
             lst.add(String.format("%s=%s", name, value));
         }
@@ -335,6 +344,16 @@ public class Platform {
             // TODO: get code version from MANIFEST file
             codeVersion = "0.1.0";
 
+            Set<Class> baseResourceClasses = reflections.getTypesAnnotatedWith(BaseResource.class).stream()
+                    .filter(clz -> clz.isAnnotationPresent(BaseResource.class)).collect(Collectors.toSet());
+            for (Class clz : baseResourceClasses) {
+                Set<Class> childResourceClasses = reflections.getSubTypesOf(clz);
+                childResourceToBaseResourceMap.put(clz.getSimpleName(), clz.getSimpleName());
+                for (Class child : childResourceClasses) {
+                    childResourceToBaseResourceMap.put(child.getSimpleName(), clz.getSimpleName());
+                }
+            }
+
             File globalPropertiesFile = PathUtil.findFileOnClassPath("zstack.properties", true);
             FileInputStream in = new FileInputStream(globalPropertiesFile);
             System.getProperties().load(in);
@@ -354,6 +373,22 @@ public class Platform {
             }
 
         }
+    }
+
+    public static String getBaseResourceType(String childResourceType) {
+        String type = childResourceToBaseResourceMap.get(childResourceType);
+        if (type == null) {
+            throw new CloudRuntimeException(String.format("cannot find base resource type for the child resource type[%s]", childResourceType));
+        }
+        return type;
+    }
+
+    public static List<String> getAllChildrenResourceType(String baseResourceType) {
+        return childResourceToBaseResourceMap.entrySet()
+                .stream()
+                .filter(map -> baseResourceType.equals(map.getValue()))
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toList());
     }
 
     private static Set<Method> getAllEncryptPassword() {
@@ -615,11 +650,18 @@ public class Platform {
     }
 
     public static String i18n(String str, Object...args) {
-        if (args != null) {
-            return String.format(str, args);
-        } else {
+        if (args == null || args.length == 0) {
             return str;
+        } else {
+            return String.format(str, args);
         }
+    }
+
+    public static String i18n(String str, Map<String, String> args) {
+        Map<String, String> nargs = new HashMap<>();
+        args.forEach((k, v) -> nargs.put(k, toI18nString(v)));
+
+        return ln(toI18nString(str)).formatByMap(nargs);
     }
 
     public static boolean killProcess(int pid) {
@@ -650,7 +692,7 @@ public class Platform {
         if (SysErrors.INTERNAL == errCode) {
             return errf.instantiateErrorCode(errCode, String.format(fmt, args));
         } else {
-            return errf.instantiateErrorCode(errCode, i18n(fmt, args));
+            return errf.instantiateErrorCode(errCode, toI18nString(fmt, args));
         }
     }
 
@@ -672,5 +714,40 @@ public class Platform {
 
     public static ErrorCode httperr(String fmt, Object...args) {
         return err(SysErrors.HTTP_ERROR, fmt, args);
+    }
+
+    public static List<Method> collectStaticMethodsByAnnotation(Class annotationClass, Class...argTypes) {
+        if (argTypes == null) {
+            argTypes = new Class[]{};
+        }
+
+        List<Method> methods = new ArrayList<>();
+        Set<Method> ms = reflections.getMethodsAnnotatedWith(annotationClass);
+        for (Method m : ms) {
+            if (!Modifier.isStatic(m.getModifiers())) {
+                throw new CloudRuntimeException(String.format("@%s %s.%s must be defined as static method", annotationClass, m.getDeclaringClass(), m.getName()));
+            }
+
+            if (m.getParameterCount() != argTypes.length) {
+                throw new CloudRuntimeException(String.format("wrong argument list of the @%s %s.%s, %s arguments required" +
+                                " but the method has %s arguments", annotationClass, m.getDeclaringClass(), m.getName(), argTypes.length,
+                        m.getParameterCount()));
+            }
+
+            for (int i=0; i<argTypes.length; i++) {
+                Class expectedType = argTypes[i];
+                Class actualType = m.getParameterTypes()[i];
+
+                if (expectedType != actualType) {
+                    throw new CloudRuntimeException(String.format("wrong argument list of the @%s %s.%s. The argument[%s] is expected of type %s" +
+                            " but got type %s", annotationClass, m.getDeclaringClass(), m.getName(), i, expectedType, actualType));
+                }
+            }
+
+            m.setAccessible(true);
+            methods.add(m);
+        }
+
+        return methods;
     }
 }

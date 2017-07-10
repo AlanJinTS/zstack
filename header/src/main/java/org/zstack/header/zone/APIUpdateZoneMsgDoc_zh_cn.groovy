@@ -7,18 +7,18 @@ doc {
 
     category "zone"
 
-    desc "更新区域的名称、描述、系统标签或者用户标签"
+    desc """更新区域的名称、描述、系统标签或者用户标签"""
 
     rest {
         request {
 			url "PUT /v1/zones/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIUpdateZoneMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -54,8 +54,8 @@ doc {
 				}
 				column {
 					name "systemTags"
- 					enclosedIn ""
- 					desc "系统标签"
+					enclosedIn ""
+					desc "系统标签"
 					location "body"
 					type "List"
 					optional true

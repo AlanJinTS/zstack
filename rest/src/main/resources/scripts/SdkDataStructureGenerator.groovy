@@ -8,8 +8,8 @@ import org.zstack.header.query.APIQueryReply
 import org.zstack.header.rest.APINoSee
 import org.zstack.header.rest.RestResponse
 import org.zstack.header.rest.SDK
-import org.zstack.rest.sdk.JavaSdkTemplate
 import org.zstack.rest.sdk.SdkFile
+import org.zstack.rest.sdk.SdkTemplate
 import org.zstack.utils.FieldUtils
 import org.zstack.utils.Utils
 import org.zstack.utils.logging.CLogger
@@ -19,7 +19,7 @@ import java.lang.reflect.Field
 /**
  * Created by xing5 on 2016/12/11.
  */
-class SdkDataStructureGenerator implements JavaSdkTemplate {
+class SdkDataStructureGenerator implements SdkTemplate {
     CLogger logger = Utils.getLogger(SdkDataStructureGenerator.class)
 
     Set<Class> responseClasses
@@ -44,8 +44,8 @@ class SdkDataStructureGenerator implements JavaSdkTemplate {
                 throw new CloudRuntimeException("failed to generate SDK for the class[${c.name}]", t)
             }
         }
+
         resolveAllClasses()
-        generateSourceDestClassMap()
 
         def ret = sdkFileMap.values() as List
         ret.add(generateSourceDestClassMap())
@@ -61,6 +61,9 @@ class SdkDataStructureGenerator implements JavaSdkTemplate {
             srcToDst.add("""\t\t\tput("${k}", "${v}");""")
             dstToSrc.add("""\t\t\tput("${v}", "${k}");""")
         }
+
+        srcToDst.sort()
+        dstToSrc.sort()
 
         SdkFile f = new SdkFile()
         f.fileName = "SourceClassMap.java"
@@ -178,6 +181,11 @@ ${output.join("\n")}
         if (!sdkFileMap.containsKey(clz)) {
             laterResolvedClasses.add(clz)
         }
+        Platform.reflections.getSubTypesOf(clz).forEach({ i ->
+            if (!sdkFileMap.containsKey(i)) {
+                laterResolvedClasses.add(i)
+            }
+        })
     }
 
     def generateResponseClass(Class responseClass) {

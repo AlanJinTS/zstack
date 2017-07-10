@@ -9,16 +9,17 @@ import org.zstack.core.cloudbus.*;
 import org.zstack.core.componentloader.PluginRegistry;
 import org.zstack.core.config.GlobalConfigFacade;
 import org.zstack.core.db.DatabaseFacade;
+import org.zstack.core.db.Q;
 import org.zstack.core.db.SimpleQuery;
 import org.zstack.core.db.SimpleQuery.Op;
 import org.zstack.core.errorcode.ErrorFacade;
-import org.zstack.core.logging.Event;
 import org.zstack.core.thread.ChainTask;
 import org.zstack.core.thread.SyncTaskChain;
 import org.zstack.core.thread.ThreadFacade;
 import org.zstack.core.workflow.FlowChainBuilder;
 import org.zstack.core.workflow.ShareFlow;
 import org.zstack.header.allocator.HostAllocatorConstant;
+import org.zstack.header.apimediator.ApiMessageInterceptionException;
 import org.zstack.header.core.Completion;
 import org.zstack.header.core.NoErrorCompletion;
 import org.zstack.header.core.NopeCompletion;
@@ -42,12 +43,12 @@ import org.zstack.utils.Utils;
 import org.zstack.utils.function.ForEachFunction;
 import org.zstack.utils.logging.CLogger;
 
-import static org.zstack.core.Platform.operr;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+
+import static org.zstack.core.Platform.operr;
 
 @Configurable(preConstruction = true, autowire = Autowire.BY_TYPE)
 public abstract class HostBase extends AbstractHost {
@@ -249,11 +250,7 @@ public abstract class HostBase extends AbstractHost {
 
                     @Override
                     public void run(FlowTrigger trigger, Map data) {
-                        SimpleQuery<VmInstanceVO> q = dbf.createQuery(VmInstanceVO.class);
-                        q.select(VmInstanceVO_.uuid);
-                        q.add(VmInstanceVO_.hostUuid, Op.EQ, self.getUuid());
-                        q.add(VmInstanceVO_.state, Op.EQ, VmInstanceState.Unknown);
-                        List<String> vmUuids = q.listValue();
+                        List<String> vmUuids = new ArrayList<String>();
                         vmUuids.addAll(vmFailedToMigrate);
                         vmUuids = CollectionUtils.removeDuplicateFromList(vmUuids);
 
@@ -262,10 +259,10 @@ public abstract class HostBase extends AbstractHost {
                             return;
                         }
 
-                        stopUnknownVms(vmUuids, trigger);
+                        stopFailedToMigrateVms(vmUuids, trigger);
                     }
 
-                    private void stopUnknownVms(List<String> vmUuids, final FlowTrigger trigger) {
+                    private void stopFailedToMigrateVms(List<String> vmUuids, final FlowTrigger trigger) {
                         final List<StopVmInstanceMsg> msgs = new ArrayList<StopVmInstanceMsg>();
                         for (String vmUuid : vmUuids) {
                             StopVmInstanceMsg msg = new StopVmInstanceMsg();
@@ -405,7 +402,6 @@ public abstract class HostBase extends AbstractHost {
                 casf.asyncCascadeFull(CascadeConstant.DELETION_CLEANUP_CODE, issuer, ctx, new NopeCompletion());
                 bus.publish(evt);
 
-                extpEmitter.afterDelete(hinv);
                 HostDeletedData d = new HostDeletedData();
                 d.setInventory(HostInventory.valueOf(self));
                 d.setHostUuid(self.getUuid());
@@ -453,6 +449,10 @@ public abstract class HostBase extends AbstractHost {
             public void run(final SyncTaskChain chain) {
                 final APIChangeHostStateEvent evt = new APIChangeHostStateEvent(msg.getId());
                 HostStateEvent stateEvent = HostStateEvent.valueOf(msg.getStateEvent());
+
+                if (self.getStatus() == HostStatus.Disconnected && stateEvent == HostStateEvent.maintain) {
+                    throw new ApiMessageInterceptionException(operr("cannot change the state of Disconnected host into Maintenance "));
+                }
                 stateEvent = stateEvent == HostStateEvent.maintain ? HostStateEvent.preMaintain : stateEvent;
                 try {
                     extpEmitter.preChange(self, stateEvent);
@@ -590,10 +590,12 @@ public abstract class HostBase extends AbstractHost {
                 Boolean noReconnect = (Boolean) errorCode.getFromOpaque(Opaque.NO_RECONNECT_AFTER_PING_FAILURE.toString());
                 reply.setNoReconnect(noReconnect != null && noReconnect);
 
-                if (changeConnectionState(HostStatusEvent.disconnected)) {
-                    new Event().log(HostLogLabel.HOST_STATUS_DISCONNECTED, self.getUuid(), self.getName(), errorCode.toString());
+                if(!Q.New(HostVO.class).eq(HostVO_.uuid, msg.getHostUuid()).isExists()){
+                    reply.setNoReconnect(true);
                 }
 
+                changeConnectionState(HostStatusEvent.disconnected);
+                
                 bus.reply(msg, reply);
             }
         });
@@ -611,6 +613,7 @@ public abstract class HostBase extends AbstractHost {
                 HostInventory hinv = HostInventory.valueOf(self);
                 extpEmitter.beforeDelete(hinv);
                 deleteHook();
+                extpEmitter.afterDelete(hinv);
                 bus.reply(msg, new HostDeletionReply());
                 tracker.untrackHost(self.getUuid());
                 chain.next();
@@ -777,6 +780,13 @@ public abstract class HostBase extends AbstractHost {
         data.setInventory(HostInventory.valueOf(self));
         evtf.fire(HostCanonicalEvents.HOST_STATUS_CHANGED_PATH, data);
 
+        CollectionUtils.safeForEach(pluginRgty.getExtensionList(AfterChangeHostStatusExtensionPoint.class),
+                new ForEachFunction<AfterChangeHostStatusExtensionPoint>() {
+                    @Override
+                    public void run(AfterChangeHostStatusExtensionPoint arg) {
+                        arg.afterChangeHostStatus(self.getUuid(), before, next);
+                    }
+                });
         return true;
     }
 
@@ -818,14 +828,31 @@ public abstract class HostBase extends AbstractHost {
                         });
 
                         flow(new NoRollbackFlow() {
-                            String __name__ = "check-license";
+                            String __name__ = "call-post-connect-extensions";
 
                             @Override
                             public void run(FlowTrigger trigger, Map data) {
+                                FlowChain postConnectChain = FlowChainBuilder.newSimpleFlowChain();
+                                postConnectChain.allowEmptyFlow();
+
+                                self = dbf.reload(self);
+                                HostInventory inv = getSelfInventory();
+
                                 for (PostHostConnectExtensionPoint p : pluginRgty.getExtensionList(PostHostConnectExtensionPoint.class)) {
-                                    p.postHostConnect(getSelfInventory());
+                                    postConnectChain.then(p.createPostHostConnectFlow(inv));
                                 }
-                                trigger.next();
+
+                                postConnectChain.done(new FlowDoneHandler(trigger) {
+                                    @Override
+                                    public void handle(Map data) {
+                                        trigger.next();
+                                    }
+                                }).error(new FlowErrorHandler(trigger) {
+                                    @Override
+                                    public void handle(ErrorCode errCode, Map data) {
+                                        trigger.fail(errCode);
+                                    }
+                                }).start();
                             }
                         });
 
@@ -864,8 +891,9 @@ public abstract class HostBase extends AbstractHost {
                             @Override
                             public void handle(ErrorCode errCode, Map data) {
                                 changeConnectionState(HostStatusEvent.disconnected);
-
-                                new Event().log(HostLogLabel.HOST_STATUS_DISCONNECTED, self.getUuid(), self.getName(), errCode.toString());
+                                if (!msg.isNewAdd()) {
+                                    tracker.trackHost(self.getUuid());
+                                }
 
                                 reply.setError(errCode);
                                 bus.reply(msg, reply);

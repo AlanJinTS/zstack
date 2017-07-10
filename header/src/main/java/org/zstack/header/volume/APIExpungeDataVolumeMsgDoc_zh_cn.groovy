@@ -1,22 +1,24 @@
 package org.zstack.header.volume
 
+import org.zstack.header.volume.APIExpungeDataVolumeEvent
+
 doc {
     title "ExpungeDataVolume"
 
     category "volume"
 
-    desc "彻底删除云盘"
+    desc """彻底删除云盘"""
 
     rest {
         request {
-			url "PUT /v1/volumes/id}/actions"
+			url "PUT /v1/volumes/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIExpungeDataVolumeMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

@@ -10,6 +10,9 @@ import org.zstack.core.cloudbus.CloudBusCallBack;
 import org.zstack.core.cloudbus.CloudBusListCallBack;
 import org.zstack.core.componentloader.PluginRegistry;
 import org.zstack.core.db.DatabaseFacade;
+import org.zstack.core.db.SQL;
+import org.zstack.core.db.Q;
+import org.zstack.core.db.SQLBatch;
 import org.zstack.core.db.SimpleQuery;
 import org.zstack.core.db.SimpleQuery.Op;
 import org.zstack.core.errorcode.ErrorFacade;
@@ -21,6 +24,7 @@ import org.zstack.header.errorcode.ErrorCode;
 import org.zstack.header.errorcode.OperationFailureException;
 import org.zstack.header.exception.CloudRuntimeException;
 import org.zstack.header.host.*;
+import org.zstack.header.image.ImagePlatform;
 import org.zstack.header.message.MessageReply;
 import org.zstack.header.query.AddExpandedQueryExtensionPoint;
 import org.zstack.header.query.ExpandedQueryAliasStruct;
@@ -36,13 +40,11 @@ import org.zstack.header.vm.*;
 import org.zstack.header.vm.VmInstanceConstant.VmOperation;
 import org.zstack.header.volume.*;
 import org.zstack.kvm.KVMConstant;
+import org.zstack.storage.snapshot.PostMarkRootVolumeAsSnapshotExtension;
 import org.zstack.utils.CollectionUtils;
 import org.zstack.utils.Utils;
 import org.zstack.utils.function.Function;
 import org.zstack.utils.logging.CLogger;
-
-import static org.zstack.core.Platform.argerr;
-import static org.zstack.core.Platform.operr;
 
 import javax.persistence.TypedQuery;
 import java.util.ArrayList;
@@ -52,6 +54,8 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 
+import static org.zstack.core.Platform.argerr;
+import static org.zstack.core.Platform.operr;
 import static org.zstack.utils.CollectionDSL.list;
 
 /**
@@ -62,12 +66,18 @@ public class LocalStorageFactory implements PrimaryStorageFactory, Component,
         GetAttachableVolumeExtensionPoint, RecalculatePrimaryStorageCapacityExtensionPoint, HostMaintenancePolicyExtensionPoint,
         AddExpandedQueryExtensionPoint, VolumeGetAttachableVmExtensionPoint, RecoverDataVolumeExtensionPoint,
         RecoverVmExtensionPoint, VmPreMigrationExtensionPoint, CreateTemplateFromVolumeSnapshotExtensionPoint, HostAfterConnectedExtensionPoint,
-        InstantiateDataVolumeOnCreationExtensionPoint {
+        InstantiateDataVolumeOnCreationExtensionPoint, PrimaryStorageAttachExtensionPoint, PostMarkRootVolumeAsSnapshotExtension {
     private final static CLogger logger = Utils.getLogger(LocalStorageFactory.class);
-    public static PrimaryStorageType type = new PrimaryStorageType(LocalStorageConstants.LOCAL_STORAGE_TYPE);
+    public static PrimaryStorageType type = new PrimaryStorageType(LocalStorageConstants.LOCAL_STORAGE_TYPE) {
+        @Override
+        public boolean isSupportVmLiveMigration() {
+            return supportVmLiveMigration &
+                    LocalStoragePrimaryStorageGlobalConfig.ALLOW_LIVE_MIGRATION.value(Boolean.class);
+        }
+    };
 
     static {
-        type.setSupportVmLiveMigration(false);
+        type.setSupportVmLiveMigration(true);
         type.setSupportVolumeMigration(true);
         type.setSupportVolumeMigrationInCurrentPrimaryStorage(true);
         type.setOrder(999);
@@ -345,6 +355,9 @@ public class LocalStorageFactory implements PrimaryStorageFactory, Component,
 
     @Override
     public void beforeDeleteHost(final HostInventory inventory) {
+        // TODO re-write and add notifications to affected resoruces
+        // TODO move the logic to cascade extension
+
         SimpleQuery<LocalStorageHostRefVO> q = dbf.createQuery(LocalStorageHostRefVO.class);
         q.select(LocalStorageHostRefVO_.primaryStorageUuid);
         q.add(LocalStorageHostRefVO_.hostUuid, Op.EQ, inventory.getUuid());
@@ -396,7 +409,6 @@ public class LocalStorageFactory implements PrimaryStorageFactory, Component,
                     for (MessageReply r : replies) {
                         if (!r.isSuccess()) {
                             String vmUuid = vmUuids.get(replies.indexOf(r));
-                            //TODO
                             logger.warn(String.format("failed to destroy the vm[uuid:%s], %s", vmUuid, r.getError()));
                         }
                     }
@@ -461,15 +473,13 @@ public class LocalStorageFactory implements PrimaryStorageFactory, Component,
 
             completion.await(TimeUnit.MINUTES.toMillis(15));
         }
-    }
 
-    @Override
-    public void afterDeleteHost(final HostInventory inventory) {
         final List<String> priUuids = getLocalStorageInCluster(inventory.getClusterUuid());
         if (priUuids == null || priUuids.isEmpty()) {
             return;
         }
 
+        // decrease ps capacity
         for (String priUuid : priUuids) {
             RemoveHostFromLocalStorageMsg msg = new RemoveHostFromLocalStorageMsg();
             msg.setPrimaryStorageUuid(priUuid);
@@ -485,6 +495,10 @@ public class LocalStorageFactory implements PrimaryStorageFactory, Component,
                         inventory.getUuid(), priUuid));
             }
         }
+    }
+
+    @Override
+    public void afterDeleteHost(final HostInventory inventory) {
     }
 
     @Override
@@ -548,14 +562,7 @@ public class LocalStorageFactory implements PrimaryStorageFactory, Component,
         if (volUuids.isEmpty()) {
             return candidates;
         }
-
-        List<VolumeVO> uninstantiatedVolumes = CollectionUtils.transformToList(candidates, new Function<VolumeVO, VolumeVO>() {
-            @Override
-            public VolumeVO call(VolumeVO arg) {
-                return arg.getStatus() == VolumeStatus.NotInstantiated ? arg : null;
-            }
-        });
-
+        
         String sql = "select ref.hostUuid" +
                 " from LocalStorageResourceRefVO ref" +
                 " where ref.resourceUuid = :volUuid" +
@@ -586,8 +593,6 @@ public class LocalStorageFactory implements PrimaryStorageFactory, Component,
                 return toExclude.contains(arg.getUuid()) ? null : arg;
             }
         });
-
-        candidates.addAll(uninstantiatedVolumes);
 
         return candidates;
     }
@@ -761,6 +766,37 @@ public class LocalStorageFactory implements PrimaryStorageFactory, Component,
     @Override
     @Transactional(readOnly = true, noRollbackForClassName = {"org.zstack.header.errorcode.OperationFailureException"})
     public void preVmMigration(VmInstanceInventory vm) {
+        // if not local storage, return
+        String sql = "select count(ps)" +
+                " from PrimaryStorageVO ps" +
+                " where ps.uuid = :uuid" +
+                " and ps.type = :type";
+        TypedQuery<Long> q = dbf.getEntityManager().createQuery(sql, Long.class);
+        q.setParameter("uuid", vm.getRootVolume().getPrimaryStorageUuid());
+        q.setParameter("type", LocalStorageConstants.LOCAL_STORAGE_TYPE);
+        q.setMaxResults(1);
+        Long count = q.getSingleResult();
+        if (count == 0) {
+            return;
+        }
+
+        if (!LocalStoragePrimaryStorageGlobalConfig.ALLOW_LIVE_MIGRATION.value(Boolean.class)) {
+            refuseLiveMigrationForLocalStorage(vm);
+        }
+
+        // forbid live migration with data volumes for local storage
+        if (vm.getAllVolumes().size() > 1) {
+            throw new OperationFailureException(operr("unable to live migrate vm[uuid:%s] with data volumes on local storage." +
+                    " Need detach all data volumes first.", vm.getUuid()));
+        }
+
+        if (!ImagePlatform.Linux.toString().equals(vm.getPlatform())) {
+            throw new OperationFailureException(operr("unable to live migrate vm[uuid:%s] with local storage." +
+                    " Only linux guest is supported. Current platform is [%s]", vm.getUuid(), vm.getPlatform()));
+        }
+    }
+
+    private void refuseLiveMigrationForLocalStorage(VmInstanceInventory vm) {
         List<String> volUuids = CollectionUtils.transformToList(vm.getAllVolumes(), new Function<String, VolumeInventory>() {
             @Override
             public String call(VolumeInventory arg) {
@@ -780,14 +816,18 @@ public class LocalStorageFactory implements PrimaryStorageFactory, Component,
         Long count = q.getSingleResult();
         if (count > 0) {
             throw new OperationFailureException(operr("unable to live migrate with local storage. The vm[uuid:%s] has volumes on local storage," +
-                            "to protect your data, please stop the vm and do the volume migration", vm.getUuid()));
+                    "to protect your data, please stop the vm and do the volume migration", vm.getUuid()));
         }
     }
 
     @Override
     public void afterHostConnected(HostInventory host) {
+        recalculatePrimaryStorageCapacity(host.getClusterUuid());
+    }
+
+    private void recalculatePrimaryStorageCapacity(String clusterUuid) {
         SimpleQuery<PrimaryStorageClusterRefVO> q = dbf.createQuery(PrimaryStorageClusterRefVO.class);
-        q.add(PrimaryStorageClusterRefVO_.clusterUuid, Op.EQ, host.getClusterUuid());
+        q.add(PrimaryStorageClusterRefVO_.clusterUuid, Op.EQ, clusterUuid);
         List<PrimaryStorageClusterRefVO> refs = q.list();
         if (refs != null && !refs.isEmpty()) {
             for (PrimaryStorageClusterRefVO ref : refs) {
@@ -836,6 +876,12 @@ public class LocalStorageFactory implements PrimaryStorageFactory, Component,
             throw new OperationFailureException(argerr("the host[uuid:%s] doesn't belong to the local primary storage[uuid:%s]", hostUuid, msg.getPrimaryStorageUuid()));
         }
 
+        if (!(msg instanceof InstantiateRootVolumeMsg) && isThereOtherNonLocalStoragePrimaryStorageForTheHost(hostUuid, msg.getPrimaryStorageUuid())) {
+            throw new OperationFailureException(argerr("The cluster mounts multiple primary storage[%s(%s), other non-LocalStorage primary storage], primaryStorageUuidForDataVolume cannot be specified %s",
+                    volume.getUuid(), volume.getType(),
+                    LocalStorageConstants.LOCAL_STORAGE_TYPE));
+        }
+
         InstantiateVolumeOnPrimaryStorageMsg imsg;
         if (msg instanceof InstantiateRootVolumeMsg) {
             InstantiateRootVolumeFromTemplateOnPrimaryStorageMsg irmsg = new InstantiateRootVolumeFromTemplateOnPrimaryStorageMsg();
@@ -859,5 +905,64 @@ public class LocalStorageFactory implements PrimaryStorageFactory, Component,
                 }
             }
         });
+    }
+
+    private boolean isThereOtherNonLocalStoragePrimaryStorageForTheHost(String hostUuid, String localStorageUuid) {
+        long count = SQL.New( "select count(pri)" +
+                " from PrimaryStorageVO pri, PrimaryStorageClusterRefVO ref, HostVO host" +
+                " where pri.uuid = ref.primaryStorageUuid" +
+                " and ref.clusterUuid = host.clusterUuid" +
+                " and host.uuid = :huuid" +
+                " and pri.uuid != :puuid" +
+                " and pri.type != :pstype", Long.class)
+                .param("huuid", hostUuid)
+                .param("puuid", localStorageUuid)
+                .param("pstype", LocalStorageConstants.LOCAL_STORAGE_TYPE).find();
+        return count > 0;
+    }
+
+    @Override
+    public void preAttachPrimaryStorage(PrimaryStorageInventory inventory, String clusterUuid) throws PrimaryStorageException {
+
+    }
+
+    @Override
+    public void beforeAttachPrimaryStorage(PrimaryStorageInventory inventory, String clusterUuid) {
+
+    }
+
+    @Override
+    public void failToAttachPrimaryStorage(PrimaryStorageInventory inventory, String clusterUuid) {
+
+    }
+
+    @Override
+    public void afterAttachPrimaryStorage(PrimaryStorageInventory inventory, String clusterUuid) {
+        recalculatePrimaryStorageCapacity(clusterUuid);
+    }
+
+    @Override
+    public void afterMarkRootVolumeAsSnapshot(VolumeSnapshotInventory snapshot) {
+
+        new SQLBatch(){
+
+            @Override
+            protected void scripts() {
+                String type = Q.New(PrimaryStorageVO.class).eq(PrimaryStorageVO_.uuid, snapshot.getPrimaryStorageUuid()).select(PrimaryStorageVO_.type).findValue();
+                if(!type.equals(LocalStorageConstants.LOCAL_STORAGE_TYPE)){
+                    return;
+                }
+                LocalStorageResourceRefVO ref = new LocalStorageResourceRefVO();
+                ref.setPrimaryStorageUuid(snapshot.getPrimaryStorageUuid());
+                ref.setSize(snapshot.getSize());
+                ref.setResourceType(snapshot.getType());
+                ref.setResourceUuid(snapshot.getUuid());
+                ref.setHostUuid(Q.New(LocalStorageResourceRefVO.class)
+                        .select(LocalStorageResourceRefVO_.hostUuid)
+                        .eq(LocalStorageResourceRefVO_.resourceUuid, snapshot.getVolumeUuid()).findValue());
+                persist(ref);
+            }
+        }.execute();
+
     }
 }

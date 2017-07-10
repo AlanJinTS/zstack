@@ -4,10 +4,7 @@ import org.springframework.http.HttpEntity
 import org.zstack.core.Platform
 import org.zstack.core.db.Q
 import org.zstack.kvm.KVMAgentCommands
-import org.zstack.sdk.CephPrimaryStorageInventory
 import org.zstack.sdk.PrimaryStorageInventory
-import org.zstack.storage.ceph.backup.CephBackupStorageBase
-import org.zstack.storage.ceph.backup.CephBackupStorageMonBase
 import org.zstack.storage.ceph.primary.CephPrimaryStorageBase
 import org.zstack.storage.ceph.primary.CephPrimaryStorageMonBase
 import org.zstack.storage.ceph.primary.CephPrimaryStorageMonVO
@@ -98,6 +95,15 @@ class CephPrimaryStorageSpec extends PrimaryStorageSpec {
             return rsp
         }
 
+        simulator(CephPrimaryStorageBase.CHECK_POOL_PATH) { HttpEntity<String> e, EnvSpec spec ->
+            def cmd = JSONObjectUtil.toObject(e.body, CephPrimaryStorageBase.CheckCmd.class)
+            CephPrimaryStorageSpec bspec = spec.specByUuid(cmd.uuid)
+            assert bspec != null: "cannot find the primary storage[uuid:${cmd.uuid}}, check your environment()"
+
+            def rsp = new CephPrimaryStorageBase.CheckRsp()
+            rsp.success = true
+            return rsp
+        }
 
         simulator(CephPrimaryStorageBase.CREATE_VOLUME_PATH) {
             return new CephPrimaryStorageBase.CreateEmptyVolumeRsp()
@@ -109,6 +115,11 @@ class CephPrimaryStorageSpec extends PrimaryStorageSpec {
 
         simulator(CephPrimaryStorageBase.DELETE_PATH) {
             return new CephPrimaryStorageBase.DeleteRsp()
+        }
+
+        simulator(CephPrimaryStorageMonBase.ECHO_PATH) { HttpEntity<String> entity ->
+            checkHttpCallType(entity, true)
+            return [:]
         }
 
         simulator(CephPrimaryStorageBase.CREATE_SNAPSHOT_PATH) {

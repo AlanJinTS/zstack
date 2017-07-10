@@ -7,19 +7,19 @@ doc {
 
     category "portForwarding"
 
-    desc "更新端口转发规则"
+    desc """更新端口转发规则"""
 
     rest {
         request {
 			url "PUT /v1/port-forwarding/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIUpdatePortForwardingRuleMsg.class
 
-			desc "更新端口转发规则"
-
+            desc """更新端口转发规则"""
+            
 			params {
 
 				column {

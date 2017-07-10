@@ -1,6 +1,7 @@
 package org.zstack.header.console;
 
 import org.zstack.header.managementnode.ManagementNodeVO;
+import org.zstack.header.vo.BaseResource;
 import org.zstack.header.vo.ForeignKey;
 
 import javax.persistence.*;
@@ -11,6 +12,7 @@ import java.sql.Timestamp;
  */
 @Table
 @Entity
+@BaseResource
 public class ConsoleProxyAgentVO {
     @Id
     @Column
@@ -22,6 +24,9 @@ public class ConsoleProxyAgentVO {
 
     @Column
     private String managementIp;
+
+    @Column
+    private String consoleProxyOverriddenIp;
 
     @Column
     private String type;
@@ -67,6 +72,14 @@ public class ConsoleProxyAgentVO {
 
     public void setManagementIp(String managementIp) {
         this.managementIp = managementIp;
+    }
+
+    public String getConsoleProxyOverriddenIp() {
+        return consoleProxyOverriddenIp;
+    }
+
+    public void setConsoleProxyOverriddenIp(String consoleProxyOverriddenIp) {
+        this.consoleProxyOverriddenIp = consoleProxyOverriddenIp;
     }
 
     public String getType() {

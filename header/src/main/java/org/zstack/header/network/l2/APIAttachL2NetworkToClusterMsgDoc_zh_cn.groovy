@@ -7,18 +7,18 @@ doc {
 
     category "二层网络"
 
-    desc "挂载二层网络到集群"
+    desc """挂载二层网络到集群"""
 
     rest {
         request {
 			url "POST /v1/l2-networks/{l2NetworkUuid}/clusters/{clusterUuid}"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIAttachL2NetworkToClusterMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

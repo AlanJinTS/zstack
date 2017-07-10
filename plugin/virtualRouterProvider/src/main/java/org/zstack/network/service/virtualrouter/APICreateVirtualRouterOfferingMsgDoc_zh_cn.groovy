@@ -7,18 +7,18 @@ doc {
 
     category "虚拟路由器"
 
-    desc "创建虚拟路由器规格"
+    desc """创建虚拟路由器规格"""
 
     rest {
         request {
 			url "POST /v1/instance-offerings/virtual-routers"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APICreateVirtualRouterOfferingMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

@@ -1,6 +1,6 @@
 package org.zstack.header.storage.backup;
 
-import org.zstack.header.tag.AutoDeleteTag;
+import org.zstack.header.vo.BaseResource;
 import org.zstack.header.vo.EO;
 import org.zstack.header.vo.NoView;
 
@@ -10,9 +10,8 @@ import java.util.Set;
 
 @Entity
 @Table
-@Inheritance(strategy = InheritanceType.JOINED)
 @EO(EOClazz = BackupStorageEO.class)
-@AutoDeleteTag
+@BaseResource
 public class BackupStorageVO extends BackupStorageAO {
     @OneToMany(fetch = FetchType.EAGER)
     @JoinColumn(name = "backupStorageUuid", insertable = false, updatable = false)

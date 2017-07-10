@@ -1,22 +1,24 @@
 package org.zstack.header.volume
 
+import org.zstack.header.volume.APIGetDataVolumeAttachableVmReply
+
 doc {
     title "GetDataVolumeAttachableVm"
 
     category "volume"
 
-    desc "获取云盘是否能被加载"
+    desc """获取云盘是否能被加载"""
 
     rest {
         request {
 			url "GET /v1/volumes/{volumeUuid}/candidate-vm-instances"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIGetDataVolumeAttachableVmMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

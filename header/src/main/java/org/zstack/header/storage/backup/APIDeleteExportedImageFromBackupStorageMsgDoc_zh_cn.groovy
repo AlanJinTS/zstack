@@ -1,28 +1,30 @@
 package org.zstack.header.storage.backup
 
+import org.zstack.header.storage.backup.APIDeleteExportedImageFromBackupStorageEvent
+
 doc {
     title "从镜像服务器删除导出的镜像(DeleteExportedImageFromBackupStorage)"
 
     category "storage.backup"
 
-    desc "在这里填写API描述"
+    desc """在这里填写API描述"""
 
     rest {
         request {
 			url "DELETE /v1/backup-storage/{backupStorageUuid}/exported-images/{imageUuid}"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIDeleteExportedImageFromBackupStorageMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
 				column {
 					name "backupStorageUuid"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "镜像存储UUID"
 					location "url"
 					type "String"
@@ -32,7 +34,7 @@ doc {
 				}
 				column {
 					name "imageUuid"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "镜像UUID"
 					location "url"
 					type "String"
@@ -42,7 +44,7 @@ doc {
 				}
 				column {
 					name "systemTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "系统标签"
 					location "body"
 					type "List"

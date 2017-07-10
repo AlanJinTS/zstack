@@ -1,22 +1,24 @@
 package org.zstack.header.storage.snapshot
 
+import org.zstack.header.storage.snapshot.APIUpdateVolumeSnapshotEvent
+
 doc {
     title "更新云盘快照信息(UpdateVolumeSnapshot)"
 
     category "snapshot.volume"
 
-    desc "更新云盘快照信息"
+    desc """更新云盘快照信息"""
 
     rest {
         request {
 			url "PUT /v1/volume-snapshots/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIUpdateVolumeSnapshotMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -52,7 +54,7 @@ doc {
 				}
 				column {
 					name "systemTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "系统标签"
 					location "body"
 					type "List"
@@ -62,7 +64,7 @@ doc {
 				}
 				column {
 					name "userTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "用户标签"
 					location "body"
 					type "List"

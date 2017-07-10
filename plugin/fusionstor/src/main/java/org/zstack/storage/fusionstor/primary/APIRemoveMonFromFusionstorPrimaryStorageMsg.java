@@ -9,14 +9,15 @@ import org.zstack.header.storage.primary.PrimaryStorageVO;
 
 import java.util.List;
 
+import static org.codehaus.groovy.runtime.InvokerHelper.asList;
+
 /**
  * Created by frank on 8/6/2015.
  */
 @RestRequest(
         path = "/primary-storage/fusionstor/{uuid}/mons",
         method = HttpMethod.DELETE,
-        responseClass = APIRemoveMonFromFusionstorPrimaryStorageEvent.class,
-        parameterName = "params"
+        responseClass = APIRemoveMonFromFusionstorPrimaryStorageEvent.class
 )
 public class APIRemoveMonFromFusionstorPrimaryStorageMsg extends APIMessage implements PrimaryStorageMessage {
     @APIParam(resourceType = PrimaryStorageVO.class)
@@ -49,7 +50,7 @@ public class APIRemoveMonFromFusionstorPrimaryStorageMsg extends APIMessage impl
     public static APIRemoveMonFromFusionstorPrimaryStorageMsg __example__() {
         APIRemoveMonFromFusionstorPrimaryStorageMsg msg = new APIRemoveMonFromFusionstorPrimaryStorageMsg();
         msg.setUuid(uuid());
-
+        msg.setMonHostnames(asList("192.168.0.100"));
         return msg;
     }
 

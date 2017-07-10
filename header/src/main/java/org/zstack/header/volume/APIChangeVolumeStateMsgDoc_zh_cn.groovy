@@ -1,22 +1,24 @@
 package org.zstack.header.volume
 
+import org.zstack.header.volume.APIChangeVolumeStateEvent
+
 doc {
     title "ChangeVolumeState"
 
     category "volume"
 
-    desc "开启或关闭云盘"
+    desc """开启或关闭云盘"""
 
     rest {
         request {
 			url "PUT /v1/volumes/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIChangeVolumeStateMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

@@ -1,5 +1,7 @@
 package org.zstack.header.console
 
+import org.zstack.header.console.APIQueryConsoleProxyAgentReply
+import org.zstack.header.query.APIQueryMessage
 import org.zstack.header.query.APIQueryMessage
 
 doc {
@@ -7,22 +9,21 @@ doc {
 
     category "console"
 
-    desc "查询控制台代理Agent"
+    desc """查询控制台代理Agent"""
 
     rest {
         request {
-            url "GET /v1/consoles/agents"
+			url "GET /v1/consoles/agents"
+			url "GET /v1/consoles/agents/{uuid}"
 
-            url "GET /v1/consoles/agents/{uuid}"
+			header (Authorization: 'OAuth the-session-uuid')
 
-
-            header(OAuth: 'the-session-uuid')
 
             clz APIQueryConsoleProxyAgentMsg.class
 
-            desc "查询控制台代理Agent"
-
-            params APIQueryMessage.class
+            desc """查询控制台代理Agent"""
+            
+			params APIQueryMessage.class
         }
 
         response {

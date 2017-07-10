@@ -7,18 +7,18 @@ doc {
 
     category "虚拟路由器"
 
-    desc "重连虚拟路由器"
+    desc """重连虚拟路由器"""
 
     rest {
         request {
 			url "PUT /v1/vm-instances/appliances/virtual-routers/{vmInstanceUuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIReconnectVirtualRouterMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

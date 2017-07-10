@@ -5,10 +5,11 @@ import org.zstack.header.query.ExpandedQueries;
 import org.zstack.header.query.ExpandedQuery;
 import org.zstack.header.query.Queryable;
 import org.zstack.header.search.Inventory;
-import org.zstack.network.l2.vxlan.vxlanNetwork.VxlanNetworkVO;
 import org.zstack.network.l2.vxlan.vxlanNetworkPool.L2VxlanNetworkPoolInventory;
+import org.zstack.network.l2.vxlan.vxlanNetworkPool.VxlanNetworkPoolVO;
 
 import javax.persistence.JoinColumn;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -33,8 +34,10 @@ public class VtepInventory {
 
     private String type;
 
-    @Queryable(mappingClass = VxlanNetworkVO.class,
-            joinColumn = @JoinColumn(name = "uuid", referencedColumnName = "poolUuid"))
+    private Timestamp createDate;
+
+    private Timestamp lastOpDate;
+
     private String poolUuid;
 
     public VtepInventory() {
@@ -47,6 +50,8 @@ public class VtepInventory {
         this.setPort(vo.getPort());
         this.setPoolUuid(vo.getPoolUuid());
         this.setType(vo.getType());
+        this.setCreateDate(vo.getCreateDate());
+        this.setLastOpDate(vo.getLastOpDate());
     }
 
     public static VtepInventory valueOf(VtepVO vo) {
@@ -107,6 +112,22 @@ public class VtepInventory {
 
     public void setPoolUuid(String poolUuid) {
         this.poolUuid = poolUuid;
+    }
+
+    public Timestamp getCreateDate() {
+        return createDate;
+    }
+
+    public void setCreateDate(Timestamp createDate) {
+        this.createDate = createDate;
+    }
+
+    public Timestamp getLastOpDate() {
+        return lastOpDate;
+    }
+
+    public void setLastOpDate(Timestamp lastOpDate) {
+        this.lastOpDate = lastOpDate;
     }
 
 }

@@ -1,5 +1,7 @@
 package org.zstack.ldap
 
+import org.zstack.ldap.APIQueryLdapBindingReply
+import org.zstack.header.query.APIQueryMessage
 import org.zstack.header.query.APIQueryMessage
 
 doc {
@@ -7,22 +9,21 @@ doc {
 
     category "ldap"
 
-    desc "查询LDAP绑定"
+    desc """查询LDAP绑定"""
 
     rest {
         request {
-            url "GET /v1/ldap/bindings"
+			url "GET /v1/ldap/bindings"
+			url "GET /v1/ldap/bindings/{uuid}"
 
-            url "GET /v1/ldap/bindings/{uuid}"
+			header (Authorization: 'OAuth the-session-uuid')
 
-
-            header(OAuth: 'the-session-uuid')
 
             clz APIQueryLdapBindingMsg.class
 
-            desc ""
-
-            params APIQueryMessage.class
+            desc """"""
+            
+			params APIQueryMessage.class
         }
 
         response {

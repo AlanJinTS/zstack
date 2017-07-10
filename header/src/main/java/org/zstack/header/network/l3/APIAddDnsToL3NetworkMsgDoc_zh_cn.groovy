@@ -7,18 +7,18 @@ doc {
 
     category "三层网络"
 
-    desc "向三层网络添加DNS"
+    desc """向三层网络添加DNS"""
 
     rest {
         request {
 			url "POST /v1/l3-networks/{l3NetworkUuid}/dns"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIAddDnsToL3NetworkMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

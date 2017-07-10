@@ -1,22 +1,24 @@
 package org.zstack.header.image
 
+import org.zstack.header.image.APICreateRootVolumeTemplateFromRootVolumeEvent
+
 doc {
     title "从根云盘创建根云盘镜像(CreateRootVolumeTemplateFromRootVolume)"
 
     category "image"
 
-    desc "从根云盘创建根云盘镜像"
+    desc """从根云盘创建根云盘镜像"""
 
     rest {
         request {
 			url "POST /v1/images/root-volume-templates/from/volumes/{rootVolumeUuid}"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APICreateRootVolumeTemplateFromRootVolumeMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
@@ -102,7 +104,7 @@ doc {
 				}
 				column {
 					name "systemTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "系统标签"
 					location "body"
 					type "List"
@@ -112,7 +114,7 @@ doc {
 				}
 				column {
 					name "userTags"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "用户标签"
 					location "body"
 					type "List"

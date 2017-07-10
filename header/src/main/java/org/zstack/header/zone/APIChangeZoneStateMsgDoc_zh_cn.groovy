@@ -7,18 +7,18 @@ doc {
 
     category "zone"
 
-    desc "改变区域的可用状态"
+    desc """改变区域的可用状态"""
 
     rest {
         request {
 			url "PUT /v1/zones/{uuid}/actions"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIChangeZoneStateMsg.class
 
-            desc "改变区域的可用状态"
+            desc """改变区域的可用状态"""
             
 			params {
 

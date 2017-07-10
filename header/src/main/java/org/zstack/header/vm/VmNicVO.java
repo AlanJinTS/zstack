@@ -4,22 +4,19 @@ import org.zstack.header.network.l3.L3NetworkEO;
 import org.zstack.header.network.l3.UsedIpVO;
 import org.zstack.header.search.SqlTrigger;
 import org.zstack.header.search.TriggerIndex;
+import org.zstack.header.vo.BaseResource;
 import org.zstack.header.vo.ForeignKey;
 import org.zstack.header.vo.ForeignKey.ReferenceOption;
 import org.zstack.header.vo.Index;
+import org.zstack.header.vo.ResourceVO;
 
 import javax.persistence.*;
 import java.sql.Timestamp;
 
 @Entity
 @Table
-@TriggerIndex
-@SqlTrigger(foreignVOClass = VmInstanceVO.class, foreignVOJoinColumn = "vmInstanceUuid")
-public class VmNicVO {
-    @Id
-    @Column
-    private String uuid;
-
+@BaseResource
+public class VmNicVO extends ResourceVO {
     @Column
     @ForeignKey(parentEntityClass = VmInstanceEO.class, onDeleteAction = ReferenceOption.CASCADE)
     private String vmInstanceUuid;
@@ -64,14 +61,6 @@ public class VmNicVO {
     @PreUpdate
     private void preUpdate() {
         lastOpDate = null;
-    }
-
-    public String getUuid() {
-        return uuid;
-    }
-
-    public void setUuid(String uuid) {
-        this.uuid = uuid;
     }
 
     public String getVmInstanceUuid() {

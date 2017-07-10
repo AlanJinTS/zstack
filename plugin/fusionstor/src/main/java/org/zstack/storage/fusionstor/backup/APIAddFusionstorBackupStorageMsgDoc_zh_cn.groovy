@@ -7,18 +7,18 @@ doc {
 
     category "未知类别"
 
-    desc "在这里填写API描述"
+    desc """在这里填写API描述"""
 
     rest {
         request {
 			url "POST /v1/backup-storage/fusionstor"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIAddFusionstorBackupStorageMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

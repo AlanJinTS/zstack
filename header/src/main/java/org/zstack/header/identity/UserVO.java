@@ -1,18 +1,17 @@
 package org.zstack.header.identity;
 
+import org.zstack.header.vo.BaseResource;
 import org.zstack.header.vo.ForeignKey;
 import org.zstack.header.vo.ForeignKey.ReferenceOption;
+import org.zstack.header.vo.ResourceVO;
 
 import javax.persistence.*;
 import java.sql.Timestamp;
 
 @Entity
 @Table
-public class UserVO {
-    @Id
-    @Column
-    private String uuid;
-
+@BaseResource
+public class UserVO extends ResourceVO {
     @Column
     @ForeignKey(parentEntityClass = AccountVO.class, parentKey = "uuid", onDeleteAction = ReferenceOption.CASCADE)
     private String accountUuid;
@@ -49,14 +48,6 @@ public class UserVO {
 
     public void setDescription(String description) {
         this.description = description;
-    }
-
-    public String getUuid() {
-        return uuid;
-    }
-
-    public void setUuid(String uuid) {
-        this.uuid = uuid;
     }
 
     public String getName() {

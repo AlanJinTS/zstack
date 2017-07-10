@@ -8,6 +8,7 @@ import org.zstack.header.search.Inventory;
 import org.zstack.network.l2.vxlan.vxlanNetwork.VxlanNetworkVO;
 
 import javax.persistence.JoinColumn;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -32,7 +33,11 @@ public class VniRangeInventory {
 
     private Integer endVni;
 
-    @Queryable(mappingClass = VxlanNetworkVO.class,
+    private Timestamp createDate;
+
+    private Timestamp lastOpDate;
+
+    @Queryable(mappingClass = VxlanNetworkPoolVO.class,
             joinColumn = @JoinColumn(name = "uuid", referencedColumnName = "l2NetworkUuid"))
     private String l2NetworkUuid;
 
@@ -46,10 +51,12 @@ public class VniRangeInventory {
         this.startVni = vo.getStartVni();
         this.endVni = vo.getEndVni();
         this.l2NetworkUuid = vo.getL2NetworkUuid();
+        this.createDate = vo.getCreateDate();
+        this.lastOpDate = vo.getLastOpDate();
     }
 
     public static VniRangeInventory valueOf(VniRangeVO vo) {
-        return new VniRangeInventory();
+        return new VniRangeInventory(vo);
     }
 
     public static List<VniRangeInventory> valueOf(Collection<VniRangeVO> vos) {
@@ -106,5 +113,21 @@ public class VniRangeInventory {
 
     public void setL2NetworkUuid(String l2NetworkUuid) {
         this.l2NetworkUuid = l2NetworkUuid;
+    }
+
+    public Timestamp getCreateDate() {
+        return createDate;
+    }
+
+    public void setCreateDate(Timestamp createDate) {
+        this.createDate = createDate;
+    }
+
+    public Timestamp getLastOpDate() {
+        return lastOpDate;
+    }
+
+    public void setLastOpDate(Timestamp lastOpDate) {
+        this.lastOpDate = lastOpDate;
     }
 }

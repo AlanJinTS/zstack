@@ -7,19 +7,19 @@ doc {
 
     category "portForwarding"
 
-    desc "用户可以使用DetachPortForwardingRule来从一个虚拟机网卡卸载一个规则"
+    desc """用户可以使用DetachPortForwardingRule来从一个虚拟机网卡卸载一个规则"""
 
     rest {
         request {
 			url "DELETE /v1/port-forwarding/{uuid}/vm-instances/nics"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIDetachPortForwardingRuleMsg.class
 
-			desc "用户可以使用DetachPortForwardingRule来从一个虚拟机网卡卸载一个规则"
-
+            desc """用户可以使用DetachPortForwardingRule来从一个虚拟机网卡卸载一个规则"""
+            
 			params {
 
 				column {

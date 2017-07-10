@@ -5,12 +5,14 @@ import org.zstack.header.vo.*;
 import org.zstack.header.vo.ForeignKey;
 
 import javax.persistence.*;
+import java.sql.Timestamp;
 
 /**
  * Created by xing5 on 2017/3/20.
  */
 @Table
 @Entity
+@BaseResource
 public class TaskProgressVO {
     @Id
     @Column
@@ -37,7 +39,17 @@ public class TaskProgressVO {
     @org.zstack.header.vo.ForeignKey(parentEntityClass = ManagementNodeVO.class, parentKey = "uuid", onDeleteAction = ForeignKey.ReferenceOption.SET_NULL)
     private String managementUuid;
     @Column
-    private long time;
+    private Long time;
+    @Column
+    private Long timeToDelete;
+
+    public long getTimeToDelete() {
+        return timeToDelete;
+    }
+
+    public void setTimeToDelete(long timeToDelete) {
+        this.timeToDelete = timeToDelete;
+    }
 
     public String getTaskName() {
         return taskName;

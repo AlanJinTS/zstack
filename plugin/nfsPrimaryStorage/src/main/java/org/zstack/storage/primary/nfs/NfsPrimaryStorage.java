@@ -8,9 +8,12 @@ import org.zstack.core.asyncbatch.LoopAsyncBatch;
 import org.zstack.core.cloudbus.AutoOffEventCallback;
 import org.zstack.core.cloudbus.CloudBusCallBack;
 import org.zstack.core.cloudbus.EventFacade;
+import org.zstack.core.db.Q;
+import org.zstack.core.db.SQLBatch;
 import org.zstack.core.db.SimpleQuery;
 import org.zstack.core.db.SimpleQuery.Op;
 import org.zstack.core.errorcode.ErrorFacade;
+import org.zstack.core.notification.N;
 import org.zstack.core.thread.SyncTask;
 import org.zstack.core.workflow.FlowChainBuilder;
 import org.zstack.core.workflow.ShareFlow;
@@ -45,6 +48,7 @@ import org.zstack.header.volume.VolumeInventory;
 import org.zstack.header.volume.VolumeVO;
 import org.zstack.kvm.KVMConstant;
 import org.zstack.storage.primary.PrimaryStorageBase;
+import org.zstack.storage.primary.PrimaryStorageCapacityUpdater;
 import org.zstack.storage.primary.PrimaryStoragePathMaker;
 import org.zstack.utils.CollectionUtils;
 import org.zstack.utils.DebugUtils;
@@ -53,6 +57,7 @@ import org.zstack.utils.function.Function;
 import org.zstack.utils.logging.CLogger;
 import org.zstack.utils.path.PathUtil;
 
+import static org.zstack.core.Platform.err;
 import static org.zstack.core.Platform.operr;
 
 import javax.persistence.Tuple;
@@ -61,10 +66,7 @@ import java.io.File;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 public class NfsPrimaryStorage extends PrimaryStorageBase {
     private static final CLogger logger = Utils.getLogger(NfsPrimaryStorage.class);
@@ -102,136 +104,100 @@ public class NfsPrimaryStorage extends PrimaryStorageBase {
             handle((GetVolumeRootImageUuidFromPrimaryStorageMsg) msg);
         } else if (msg instanceof DeleteImageCacheOnPrimaryStorageMsg) {
             handle((DeleteImageCacheOnPrimaryStorageMsg) msg);
+        } else if (msg instanceof NfsRecalculatePrimaryStorageCapacityMsg) {
+            handle((NfsRecalculatePrimaryStorageCapacityMsg) msg);
         } else {
             super.handleLocalMessage(msg);
         }
     }
 
-    protected void updateMountPoint(PrimaryStorageVO vo, String newUrl) {
-        Future<ErrorCode> future = thdf.syncSubmit(new SyncTask<ErrorCode>() {
-            @Override
-            public ErrorCode call() throws Exception {
-                ErrorCode err = new NfsApiParamChecker().checkUrl(self.getZoneUuid(), newUrl);
-                if (err != null) {
-                    return err;
-                }
+    protected void updateMountPoint(PrimaryStorageVO vo, String newUrl, Completion completion) {
+        String oldUrl = self.getUrl();
 
-                String oldUrl = self.getUrl();
-
-                checkRunningVmForUpdateUrl();
-                vo.setUrl(newUrl);
-                dbf.update(vo);
-
-                SimpleQuery<PrimaryStorageClusterRefVO> q = dbf.createQuery(PrimaryStorageClusterRefVO.class);
-                q.select(PrimaryStorageClusterRefVO_.clusterUuid);
-                q.add(PrimaryStorageClusterRefVO_.primaryStorageUuid, Op.EQ, self.getUuid());
-                List<String> cuuids = q.listValue();
-                if (cuuids.isEmpty()) {
-                    return null;
-                }
-
-                FutureCompletion completion = new FutureCompletion(null);
-
-                PrimaryStorageInventory psinv = getSelfInventory();
-
-                new LoopAsyncBatch<String>(completion) {
-                    @Override
-                    protected Collection<String> collect() {
-                        return cuuids;
-                    }
-
-                    @Override
-                    protected AsyncBatchRunner forEach(String item) {
-                        return new AsyncBatchRunner() {
-                            @Override
-                            public void run(NoErrorCompletion completion) {
-                                NfsPrimaryStorageBackend bkd = getBackendByClusterUuid(item);
-                                bkd.updateMountPoint(psinv, item, oldUrl, newUrl, new Completion(completion) {
-                                    @Override
-                                    public void success() {
-                                        completion.done();
-                                    }
-
-                                    @Override
-                                    public void fail(ErrorCode errorCode) {
-                                        //TODO: bring the host to an error state
-                                        logger.warn(String.format("failed to update the nfs[uuid:%s, name:%s] mount point" +
-                                                        " from %s to %s in the cluster[uuid:%s], %s", self.getUuid(), self.getName(),
-                                                oldUrl, newUrl, item, errorCode));
-                                        completion.done();
-                                    }
-                                });
-                            }
-                        };
-                    }
-
-                    @Override
-                    protected void done() {
-                        completion.success();
-                    }
-                }.start();
-
-                completion.await();
-
-                if (completion.isSuccess()) {
-                    return null;
-                } else {
-                    return completion.getErrorCode();
-                }
-            }
-
-            @Override
-            public String getName() {
-                return getSyncSignature();
-            }
-
-            @Override
-            public String getSyncSignature() {
-                return String.format("nfs-update-url-%s", self.getUuid());
-            }
-
-            @Override
-            public int getSyncLevel() {
-                return 1;
-            }
-        });
-
-        try {
-            ErrorCode err = future.get();
-            if (err != null) {
-                throw new OperationFailureException(err);
-            }
-        } catch (InterruptedException | ExecutionException e) {
-            throw new CloudRuntimeException(e);
+        SimpleQuery<PrimaryStorageClusterRefVO> q = dbf.createQuery(PrimaryStorageClusterRefVO.class);
+        q.select(PrimaryStorageClusterRefVO_.clusterUuid);
+        q.add(PrimaryStorageClusterRefVO_.primaryStorageUuid, Op.EQ, self.getUuid());
+        List<String> cuuids = q.listValue();
+        if (cuuids.isEmpty()) {
+            vo.setUrl(newUrl);
+            dbf.update(vo);
+            completion.success();
         }
+
+        PrimaryStorageInventory psinv = getSelfInventory();
+
+        new LoopAsyncBatch<String>(completion) {
+            @Override
+            protected Collection<String> collect() {
+                return cuuids;
+            }
+
+           @Override
+           protected AsyncBatchRunner forEach(String item) {
+               return new AsyncBatchRunner() {
+                   @Override
+                   public void run(NoErrorCompletion completion) {
+                       NfsPrimaryStorageBackend bkd = getBackendByClusterUuid(item);
+                       bkd.updateMountPoint(psinv, item, oldUrl, newUrl, new Completion(completion) {
+                           @Override
+                           public void success() {
+                               completion.done();
+                           }
+
+                           @Override
+                           public void fail(ErrorCode errorCode) {
+                               logger.warn(String.format("failed to update the nfs[uuid:%s, name:%s] mount point" +
+                                               " from %s to %s in the cluster[uuid:%s], %s", self.getUuid(), self.getName(),
+                                       oldUrl, newUrl, item, errorCode));
+                               errors.add(errorCode);
+                               completion.done();
+                           }
+                       });
+                   }
+               };
+           }
+
+            @Override
+            protected void done() {
+                if (errors.size() == cuuids.size()){
+                    completion.fail(errors.get(0));
+                }else {
+                    vo.setUrl(newUrl);
+                    dbf.update(vo);
+                    completion.success();
+                }
+            }
+        }.start();
     }
 
     @Override
-    protected PrimaryStorageVO updatePrimaryStorage(APIUpdatePrimaryStorageMsg msg) {
-        PrimaryStorageVO vo = super.updatePrimaryStorage(msg);
-        vo = vo == null ? self : vo;
-
-        if (msg.getUrl() != null && !self.getUrl().equals(msg.getUrl())) {
-            updateMountPoint(vo, msg.getUrl());
+    protected void updatePrimaryStorage(APIUpdatePrimaryStorageMsg msg, ReturnValueCompletion<PrimaryStorageVO> completion) {
+        boolean update = false;
+        if (msg.getName() != null) {
+            self.setName(msg.getName());
+            update = true;
+        }
+        if (msg.getDescription() != null) {
+            self.setDescription(msg.getDescription());
+            update = true;
         }
 
-        return vo;
-    }
+        if (msg.getUrl() != null && !self.getUrl().equals(msg.getUrl())){
+            updateMountPoint(self, msg.getUrl(), new Completion(completion) {
+                @Override
+                public void success() {
+                    self.setUrl(msg.getUrl());
+                    completion.success(self);
+                }
 
-    @Transactional(readOnly = true)
-    private void checkRunningVmForUpdateUrl() {
-        String sql = "select vm.name, vm.uuid from VmInstanceVO vm, VolumeVO vol where vm.uuid = vol.vmInstanceUuid and" +
-                " vol.primaryStorageUuid = :psUuid and vm.state = :vmState";
-        TypedQuery<Tuple> q = dbf.getEntityManager().createQuery(sql, Tuple.class);
-        q.setParameter("psUuid", self.getUuid());
-        q.setParameter("vmState", VmInstanceState.Running);
-        List<Tuple> ts = q.getResultList();
-
-        if (!ts.isEmpty()) {
-            List<String> vms = ts.stream().map(v -> String.format("VM[name:%s, uuid:%s]", v.get(0, String.class), v.get(1, String.class))).collect(Collectors.toList());
-            throw new OperationFailureException(operr("there are %s running VMs on the NFS primary storage, please" +
-                    " stop them and try again:\n%s\n", vms.size(), StringUtils.join(vms, "\n")));
+                @Override
+                public void fail(ErrorCode errorCode) {
+                    completion.fail(errorCode);
+                }
+            });
+            return;
         }
+        completion.success(update? self: null);
     }
 
     @Override
@@ -405,13 +371,14 @@ public class NfsPrimaryStorage extends PrimaryStorageBase {
 
     protected void handle(final RevertVolumeFromSnapshotOnPrimaryStorageMsg msg) {
         final RevertVolumeFromSnapshotOnPrimaryStorageReply reply = new RevertVolumeFromSnapshotOnPrimaryStorageReply();
-
-        HostInventory destHost = factory.getConnectedHostForOperation(PrimaryStorageInventory.valueOf(self));
-        if (destHost == null) {
+        HostInventory destHost;
+        try {
+            destHost = factory.getConnectedHostForOperation(PrimaryStorageInventory.valueOf(self)).get(0);
+        }catch (OperationFailureException e){
             reply.setError(operr("no host in Connected status to which nfs primary storage[uuid:%s, name:%s] attached" +
-                                    " found to revert volume[uuid:%s] to snapshot[uuid:%s, name:%s]",
-                            self.getUuid(), self.getName(), msg.getVolume().getUuid(),
-                            msg.getSnapshot().getUuid(), msg.getSnapshot().getName()));
+                            " found to revert volume[uuid:%s] to snapshot[uuid:%s, name:%s]",
+                    self.getUuid(), self.getName(), msg.getVolume().getUuid(),
+                    msg.getSnapshot().getUuid(), msg.getSnapshot().getName()));
 
             bus.reply(msg, reply);
             return;
@@ -436,7 +403,7 @@ public class NfsPrimaryStorage extends PrimaryStorageBase {
     protected  void handle(final ReInitRootVolumeFromTemplateOnPrimaryStorageMsg msg) {
         final ReInitRootVolumeFromTemplateOnPrimaryStorageReply reply = new ReInitRootVolumeFromTemplateOnPrimaryStorageReply();
 
-        HostInventory destHost = factory.getConnectedHostForOperation(PrimaryStorageInventory.valueOf(self));
+        HostInventory destHost = factory.getConnectedHostForOperation(PrimaryStorageInventory.valueOf(self)).get(0);
         if (destHost == null) {
             reply.setError(operr("no host in Connected status to which nfs primary storage[uuid:%s, name:%s] attached" +
                             " found to revert volume[uuid:%s] to image[uuid:%s]",
@@ -486,9 +453,9 @@ public class NfsPrimaryStorage extends PrimaryStorageBase {
                 gc.hypervisorType = bkd.getHypervisorType().toString();
                 gc.submit(NfsPrimaryStorageGlobalConfig.GC_INTERVAL.value(Long.class), TimeUnit.SECONDS);
 
-                //TODO: alarm
-                logger.warn(String.format("failed to delete the volume snapshot[uuid:%s], %s. GC job is submitted",
-                        sinv.getUuid(), errorCode));
+                N.New(PrimaryStorageVO.class, self.getUuid()).warn_("NFS primary storage[uuid:%s] failed to delete a volume snapshot[uuid:%s], %s. A GC" +
+                        " job[uuid:%s] is scheduled to cleanup it in the interval of %s seconds",
+                        self.getUuid(), sinv.getUuid(), errorCode, NfsPrimaryStorageGlobalConfig.GC_INTERVAL.value(Long.class));
                 bus.reply(msg, reply);
             }
         });
@@ -519,7 +486,7 @@ public class NfsPrimaryStorage extends PrimaryStorageBase {
 
             huuid = VmInstanceState.Running == vmState ? hostUuid : lastHostUuid;
         } else {
-            HostInventory host = factory.getConnectedHostForOperation(getSelfInventory());
+            HostInventory host = factory.getConnectedHostForOperation(getSelfInventory()).get(0);
             huuid = host.getUuid();
         }
 
@@ -608,19 +575,23 @@ public class NfsPrimaryStorage extends PrimaryStorageBase {
 
     @Override
     public void attachHook(String clusterUuid, Completion completion) {
-
         NfsPrimaryStorageBackend backend = getBackendByClusterUuid(clusterUuid);
-        try {
-            boolean ret = backend.attachToCluster(PrimaryStorageInventory.valueOf(self), clusterUuid);
-            if (ret) {
-                changeStatus(PrimaryStorageStatus.Connected);
+        backend.attachToCluster(PrimaryStorageInventory.valueOf(self), clusterUuid, new ReturnValueCompletion<Boolean>(completion) {
+            @Override
+            public void success(Boolean ret) {
+                if(ret){
+                    changeStatus(PrimaryStorageStatus.Connected);
+                }
+                completion.success();
             }
 
-            completion.success();
-        } catch (NfsPrimaryStorageException e) {
-            completion.fail(errf.throwableToOperationError(e));
-        }
+            @Override
+            public void fail(ErrorCode errorCode) {
+                completion.fail(errorCode);
+            }
+        });
     }
+
 
     @Override
     public void detachHook(String clusterUuid, Completion completion) {
@@ -1032,10 +1003,36 @@ public class NfsPrimaryStorage extends PrimaryStorageBase {
         });
     }
 
+    protected void handle(NfsRecalculatePrimaryStorageCapacityMsg msg) {
+        if (msg.isRelease()) {
+            doReleasePrimaryStorageCapacity();
+        } else {
+            RecalculatePrimaryStorageCapacityMsg rmsg = new RecalculatePrimaryStorageCapacityMsg();
+            rmsg.setPrimaryStorageUuid(self.getUuid());
+            bus.makeLocalServiceId(rmsg, PrimaryStorageConstant.SERVICE_ID);
+            bus.send(rmsg);
+        }
+    }
+
+    private void doReleasePrimaryStorageCapacity() {
+        PrimaryStorageCapacityUpdater updater = new PrimaryStorageCapacityUpdater(self.getUuid());
+        updater.run(new PrimaryStorageCapacityUpdaterRunnable() {
+            @Override
+            public PrimaryStorageCapacityVO call(PrimaryStorageCapacityVO cap) {
+                cap.setAvailableCapacity(0L);
+                cap.setAvailablePhysicalCapacity(0L);
+                cap.setSystemUsedCapacity(0L);
+                cap.setTotalPhysicalCapacity(0L);
+                cap.setTotalCapacity(0L);
+                return cap;
+            }
+        });
+    }
+
     protected void hookToKVMHostConnectedEventToChangeStatusToConnected() {
         // hook on host connected event to reconnect the primary storage once there is
         // a host connected in attached clusters
-        evtf.on(HostCanonicalEvents.HOST_STATUS_CHANGED_PATH, new AutoOffEventCallback() {
+        evtf.onLocal(HostCanonicalEvents.HOST_STATUS_CHANGED_PATH, new AutoOffEventCallback() {
             {
                 uniqueIdentity = String.format("connect-nfs-%s-when-host-connected", self.getUuid());
             }
@@ -1070,8 +1067,8 @@ public class NfsPrimaryStorage extends PrimaryStorageBase {
                 future.await();
 
                 if (!future.isSuccess()) {
-                    //TODO
-                    logger.warn(String.format("%s", future.getErrorCode()));
+                    N.New(PrimaryStorageVO.class, self.getUuid()).warn_("unable to reconnect the primary storage[uuid:%s, name:%s], %s",
+                            self.getUuid(), self.getName(), future.getErrorCode());
                 }
 
                 return future.isSuccess();

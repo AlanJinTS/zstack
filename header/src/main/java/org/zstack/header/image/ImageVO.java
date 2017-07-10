@@ -1,6 +1,6 @@
 package org.zstack.header.image;
 
-import org.zstack.header.tag.AutoDeleteTag;
+import org.zstack.header.vo.BaseResource;
 import org.zstack.header.vo.EO;
 import org.zstack.header.vo.NoView;
 
@@ -10,9 +10,8 @@ import java.util.Set;
 
 @Entity
 @Table
-@Inheritance(strategy = InheritanceType.JOINED)
 @EO(EOClazz = ImageEO.class)
-@AutoDeleteTag
+@BaseResource
 public class ImageVO extends ImageAO {
     @OneToMany(fetch = FetchType.EAGER)
     @JoinColumn(name = "imageUuid", insertable = false, updatable = false)

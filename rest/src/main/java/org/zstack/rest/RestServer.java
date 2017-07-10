@@ -31,13 +31,10 @@ import org.zstack.header.query.APIQueryMessage;
 import org.zstack.header.query.APIQueryReply;
 import org.zstack.header.query.QueryCondition;
 import org.zstack.header.query.QueryOp;
-import org.zstack.header.rest.APINoSee;
-import org.zstack.header.rest.RESTFacade;
-import org.zstack.header.rest.RestRequest;
-import org.zstack.header.rest.RestResponse;
+import org.zstack.header.rest.*;
 import org.zstack.rest.sdk.DocumentGenerator;
-import org.zstack.rest.sdk.JavaSdkTemplate;
 import org.zstack.rest.sdk.SdkFile;
+import org.zstack.rest.sdk.SdkTemplate;
 import org.zstack.utils.*;
 import org.zstack.utils.gson.JSONObjectUtil;
 import org.zstack.utils.logging.CLogger;
@@ -49,6 +46,7 @@ import javax.servlet.http.HttpSession;
 import java.io.File;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Modifier;
@@ -124,7 +122,8 @@ public class RestServer implements Component, CloudBusEventListener {
 
         try {
             Class clz = GroovyUtils.getClass("scripts/SdkApiTemplate.groovy", RestServer.class.getClassLoader());
-            Set<Class<?>> apiClasses = Platform.getReflections().getTypesAnnotatedWith(RestRequest.class);
+            Set<Class<?>> apiClasses = Platform.getReflections().getTypesAnnotatedWith(RestRequest.class)
+                    .stream().filter(it -> it.isAnnotationPresent(RestRequest.class)).collect(Collectors.toSet());
 
             List<SdkFile> allFiles = new ArrayList<>();
             for (Class apiClz : apiClasses) {
@@ -132,11 +131,11 @@ public class RestServer implements Component, CloudBusEventListener {
                     continue;
                 }
 
-                JavaSdkTemplate tmp = (JavaSdkTemplate) clz.getConstructor(Class.class).newInstance(apiClz);
+                SdkTemplate tmp = (SdkTemplate) clz.getConstructor(Class.class).newInstance(apiClz);
                 allFiles.addAll(tmp.generate());
             }
 
-            JavaSdkTemplate tmp = GroovyUtils.newInstance("scripts/SdkDataStructureGenerator.groovy", RestServer.class.getClassLoader());
+            SdkTemplate tmp = GroovyUtils.newInstance("scripts/SdkDataStructureGenerator.groovy", RestServer.class.getClassLoader());
             allFiles.addAll(tmp.generate());
 
             for (SdkFile f : allFiles) {
@@ -504,7 +503,7 @@ public class RestServer implements Component, CloudBusEventListener {
 
     void handle(HttpServletRequest req, HttpServletResponse rsp) throws IOException, IllegalAccessException, NoSuchMethodException, InvocationTargetException {
         requestInfo.set(new RequestInfo(req));
-
+        rsp.setCharacterEncoding("utf-8");
         String path = getDecodedUrl(req);
         HttpEntity<String> entity = toHttpEntity(req);
 
@@ -707,6 +706,24 @@ public class RestServer implements Component, CloudBusEventListener {
         if (parameter == null) {
             msg = (APIMessage) api.apiClass.newInstance();
         } else {
+            // check boolean type parameters
+            for (Field f : api.apiClass.getDeclaredFields()) {
+                if (f.getType().isAssignableFrom(boolean.class)) {
+                    Object booleanObject = ((Map) parameter).get(f.getName());
+                    if (booleanObject == null) {
+                        continue;
+                    }
+                    String booleanValue = booleanObject.toString();
+                    if (!(booleanValue.equalsIgnoreCase("true") ||
+                            booleanValue.equalsIgnoreCase("false"))) {
+                        throw new RestException(HttpStatus.BAD_REQUEST.value(),
+                                String.format("Invalid value for boolean field [%s]," +
+                                                " [%s] is not a valid boolean string[true, false].",
+                                        f.getName(), booleanValue));
+                    }
+                }
+            }
+
             msg = JSONObjectUtil.rehashObject(parameter, (Class<APIMessage>) api.apiClass);
         }
 
@@ -1024,13 +1041,29 @@ public class RestServer implements Component, CloudBusEventListener {
         return substituteUrl(p, m);
     }
 
+    private void collectRestRequestErrConfigApi(List<String> errorApiList, Class apiClass, RestRequest apiRestRequest){
+        if (apiRestRequest.isAction() && !RESTConstant.DEFAULT_PARAMETER_NAME.equals(apiRestRequest.parameterName())) {
+            errorApiList.add(String.format("[%s] RestRequest config error, Setting parameterName is not allowed when isAction set true", apiClass.getName()));
+        } else if (apiRestRequest.isAction() && HttpMethod.PUT != apiRestRequest.method()) {
+            errorApiList.add(String.format("[%s] RestRequest config error, method can only be set to HttpMethod.PUT when isAction set true", apiClass.getName()));
+        }else if (!RESTConstant.DEFAULT_PARAMETER_NAME.equals(apiRestRequest.parameterName()) && (HttpMethod.PUT == apiRestRequest.method() || HttpMethod.DELETE == apiRestRequest.method())){
+            errorApiList.add(String.format("[%s] RestRequest config error, method is not allowed to set to HttpMethod.PUT(HttpMethod.DELETE) when parameterName set a value", apiClass.getName()));
+        }else if(HttpMethod.GET == apiRestRequest.method() && !RESTConstant.DEFAULT_PARAMETER_NAME.equals(apiRestRequest.parameterName())){
+            errorApiList.add(String.format("[%s] RestRequest config error, Setting parameterName is not allowed when method set HttpMethod.GET", apiClass.getName()));
+        }
+    }
+
     private void build() {
         Reflections reflections = Platform.getReflections();
-        Set<Class<?>> classes = reflections.getTypesAnnotatedWith(RestRequest.class);
+        Set<Class<?>> classes = reflections.getTypesAnnotatedWith(RestRequest.class).stream()
+                .filter(it -> it.isAnnotationPresent(RestRequest.class)).collect(Collectors.toSet());
 
+        List<String> errorApiList = new ArrayList();
         for (Class clz : classes) {
             RestRequest at = (RestRequest) clz.getAnnotation(RestRequest.class);
             Api api = new Api(clz, at);
+
+            collectRestRequestErrConfigApi(errorApiList, clz, at);
 
             List<String> paths = new ArrayList<>();
             if (!"null".equals(api.path)) {
@@ -1066,6 +1099,29 @@ public class RestServer implements Component, CloudBusEventListener {
             }
 
             responseAnnotationByClass.put(api.apiResponseClass, new RestResponseWrapper(api.responseAnnotation, api.apiResponseClass));
+        }
+
+        responseAnnotationByClass.put(APIEvent.class, new RestResponseWrapper(new RestResponse(){
+            @Override
+            public Class<? extends Annotation> annotationType() {
+                return null;
+            }
+
+            @Override
+            public String allTo() {
+                return "";
+            }
+
+            @Override
+            public String[] fieldsTo() {
+                return new String[0];
+            }
+
+        }, APIEvent.class));
+
+        if (errorApiList.size() > 0){
+            logger.error(String.format("Error Api list : %s", errorApiList));
+            throw new RuntimeException(String.format("Error Api list : %s", errorApiList));
         }
 
         // below codes are checking if there

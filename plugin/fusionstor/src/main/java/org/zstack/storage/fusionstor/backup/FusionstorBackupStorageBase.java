@@ -237,12 +237,22 @@ public class FusionstorBackupStorageBase extends BackupStorageBase {
         public String fsid;
     }
 
+    public static class GetLocalFileSizeCmd extends AgentCommand {
+        public String path ;
+    }
+
+    public static class GetLocalFileSizeRsp extends AgentResponse {
+        public long size;
+    }
+
+
     public static final String INIT_PATH = "/fusionstor/backupstorage/init";
     public static final String DOWNLOAD_IMAGE_PATH = "/fusionstor/backupstorage/image/download";
     public static final String DELETE_IMAGE_PATH = "/fusionstor/backupstorage/image/delete";
     public static final String GET_IMAGE_SIZE_PATH = "/fusionstor/backupstorage/image/getsize";
     public static final String PING_PATH = "/fusionstor/backupstorage/ping";
     public static final String GET_FACTS = "/fusionstor/backupstorage/facts";
+    public static final String GET_LOCAL_FILE_SIZE = "/ceph/backupstorage/getlocalfilesize";
 
     protected String makeImageInstallPath(String imageUuid) {
         return String.format("fusionstor://%s/%s", getSelf().getPoolName(), imageUuid);
@@ -415,7 +425,7 @@ public class FusionstorBackupStorageBase extends BackupStorageBase {
     protected void handle(final DeleteBitsOnBackupStorageMsg msg) {
         final DeleteBitsOnBackupStorageReply reply = new DeleteBitsOnBackupStorageReply();
         if (!canDelete(msg.getInstallPath())) {
-            //TODO: the image is still referred, need to cleanup
+            //TODO: GC, the image is still referred, need to cleanup
             bus.reply(msg, reply);
             return;
         }
@@ -426,7 +436,7 @@ public class FusionstorBackupStorageBase extends BackupStorageBase {
         httpCall(DELETE_IMAGE_PATH, cmd, DeleteRsp.class, new ReturnValueCompletion<DeleteRsp>(msg) {
             @Override
             public void fail(ErrorCode err) {
-                //TODO
+                //TODO GC, instead of error
                 reply.setError(err);
                 bus.reply(msg, reply);
             }
@@ -478,6 +488,26 @@ public class FusionstorBackupStorageBase extends BackupStorageBase {
             @Override
             public void fail(ErrorCode errorCode) {
                 reply.setError(errorCode);
+                bus.reply(msg, reply);
+            }
+        });
+    }
+
+    @Override
+    protected void handle(GetLocalFileSizeOnBackupStorageMsg msg) {
+        GetLocalFileSizeOnBackupStorageReply reply = new GetLocalFileSizeOnBackupStorageReply();
+        GetLocalFileSizeCmd cmd = new GetLocalFileSizeCmd();
+        cmd.path = msg.getUrl();
+        httpCall(GET_LOCAL_FILE_SIZE, cmd, GetLocalFileSizeRsp.class, new ReturnValueCompletion<GetLocalFileSizeRsp>(msg) {
+            @Override
+            public void fail(ErrorCode err) {
+                reply.setError(err);
+                bus.reply(msg, reply);
+            }
+
+            @Override
+            public void success(GetLocalFileSizeRsp ret) {
+                reply.setSize(ret.size);
                 bus.reply(msg, reply);
             }
         });

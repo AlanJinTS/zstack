@@ -68,13 +68,7 @@ class NfsGCCase extends SubCase {
                 conditions = ["context~=%${vol.getUuid()}%".toString()]
             }[0]
 
-            return {
-                assert inv.status == GCStatus.Idle.toString()
-            }
-        }
-
-        triggerGCJob {
-            uuid = inv.uuid
+            assert inv.status == GCStatus.Idle.toString()
         }
 
         boolean called = false
@@ -83,15 +77,17 @@ class NfsGCCase extends SubCase {
             return rsp
         }
 
+        triggerGCJob {
+            uuid = inv.uuid
+        }
+
         retryInSecs {
             inv = queryGCJob {
                 conditions = ["context~=%${vol.getUuid()}%".toString()]
             }[0]
 
-            return {
-                assert called
-                assert inv.status == GCStatus.Done.toString()
-            }
+            assert called
+            assert inv.status == GCStatus.Done.toString()
         }
     }
 
@@ -122,13 +118,7 @@ class NfsGCCase extends SubCase {
                 conditions = ["context~=%${sp.getUuid()}%".toString()]
             }[0]
 
-            return {
-                assert inv.status == GCStatus.Idle.toString()
-            }
-        }
-
-        triggerGCJob {
-            uuid = inv.uuid
+            assert inv.status == GCStatus.Idle.toString()
         }
 
         boolean called = false
@@ -137,15 +127,17 @@ class NfsGCCase extends SubCase {
             return rsp
         }
 
+        triggerGCJob {
+            uuid = inv.uuid
+        }
+
         retryInSecs {
             inv = queryGCJob {
                 conditions = ["context~=%${sp.getUuid()}%".toString()]
             }[0]
 
-            return {
-                assert called
-                assert inv.status == GCStatus.Done.toString()
-            }
+            assert called
+            assert inv.status == GCStatus.Done.toString()
         }
     }
 
@@ -184,10 +176,8 @@ class NfsGCCase extends SubCase {
                 conditions = ["context~=%${vol.getUuid()}%".toString(), "runnerClass=${NfsDeleteVolumeGC.class.name}".toString()]
             }[0]
 
-            return {
-                assert spGC.status == GCStatus.Idle.toString()
-                assert volumeGC.status == GCStatus.Idle.toString()
-            }
+            assert spGC.status == GCStatus.Idle.toString()
+            assert volumeGC.status == GCStatus.Idle.toString()
         }
 
         detachPrimaryStorageFromCluster {
@@ -209,9 +199,7 @@ class NfsGCCase extends SubCase {
                 conditions = ["context~=%${sp.getUuid()}%".toString()]
             }[0]
 
-            return {
-                assert spGC.status == GCStatus.Done.toString()
-            }
+            assert spGC.status == GCStatus.Done.toString()
         }
 
         triggerGCJob {
@@ -224,9 +212,7 @@ class NfsGCCase extends SubCase {
                 conditions = ["context~=%${vol.getUuid()}%".toString(), "runnerClass=${NfsDeleteVolumeGC.class.name}".toString()]
             }[0]
 
-            return {
-                assert volumeGC.status == GCStatus.Done.toString()
-            }
+            assert volumeGC.status == GCStatus.Done.toString()
         }
     }
 

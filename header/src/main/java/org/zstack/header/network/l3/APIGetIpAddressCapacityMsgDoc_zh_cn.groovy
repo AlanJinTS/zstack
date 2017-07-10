@@ -7,24 +7,24 @@ doc {
 
     category "三层网络"
 
-    desc "获取IP网络地址容量"
+    desc """获取IP网络地址容量"""
 
     rest {
         request {
 			url "GET /v1/ip-capacity"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIGetIpAddressCapacityMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 
 				column {
 					name "zoneUuids"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "区域UUID"
 					location "query"
 					type "List"
@@ -34,7 +34,7 @@ doc {
 				}
 				column {
 					name "l3NetworkUuids"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "三层网络UUID"
 					location "query"
 					type "List"
@@ -44,7 +44,7 @@ doc {
 				}
 				column {
 					name "ipRangeUuids"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "IP地址范围UUID"
 					location "query"
 					type "List"
@@ -54,7 +54,7 @@ doc {
 				}
 				column {
 					name "all"
-					enclosedIn "params"
+					enclosedIn ""
 					desc "系统全局"
 					location "query"
 					type "boolean"
@@ -64,8 +64,8 @@ doc {
 				}
 				column {
 					name "systemTags"
- 					enclosedIn ""
- 					desc "系统标签"
+					enclosedIn ""
+					desc "系统标签"
 					location "query"
 					type "List"
 					optional true

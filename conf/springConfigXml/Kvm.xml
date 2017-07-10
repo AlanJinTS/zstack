@@ -90,5 +90,6 @@
         <zstack:plugin>
             <zstack:extension interface="org.zstack.header.apimediator.ApiMessageInterceptor"/>
         </zstack:plugin>
-    </bean>	
+    </bean>
+
 </beans>

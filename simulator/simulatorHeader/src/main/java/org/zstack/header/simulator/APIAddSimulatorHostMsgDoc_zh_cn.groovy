@@ -7,18 +7,18 @@ doc {
 
     category "host"
 
-    desc "在这里填写API描述"
+    desc """在这里填写API描述"""
 
     rest {
         request {
 			url "POST /v1/hosts/simulators"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIAddSimulatorHostMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

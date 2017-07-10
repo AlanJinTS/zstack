@@ -8,12 +8,18 @@ import org.zstack.compute.allocator.HostAllocatorManager;
 import org.zstack.core.cloudbus.CloudBus;
 import org.zstack.core.cloudbus.CloudBusListCallBack;
 import org.zstack.core.db.DatabaseFacade;
+import org.zstack.core.db.Q;
 import org.zstack.core.db.SimpleQuery;
 import org.zstack.core.db.SimpleQuery.Op;
+import org.zstack.header.allocator.HostAllocatorError;
 import org.zstack.header.configuration.DiskOfferingInventory;
 import org.zstack.header.core.workflow.Flow;
 import org.zstack.header.core.workflow.FlowRollback;
 import org.zstack.header.core.workflow.FlowTrigger;
+import org.zstack.header.errorcode.ErrorCode;
+import org.zstack.header.errorcode.OperationFailureException;
+import org.zstack.header.host.HostVO;
+import org.zstack.header.host.HostVO_;
 import org.zstack.header.image.ImageConstant.ImageMediaType;
 import org.zstack.header.message.MessageReply;
 import org.zstack.header.storage.backup.BackupStorageVO;
@@ -33,6 +39,9 @@ import javax.persistence.TypedQuery;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+
+import static org.zstack.core.Platform.argerr;
+import static org.zstack.core.Platform.operr;
 
 /**
  * Created by frank on 7/2/2015.
@@ -67,21 +76,53 @@ public class LocalStorageAllocateCapacityFlow implements Flow {
     @Transactional(readOnly = true)
     private String getMostFreeLocalStorageUuid(String hostUuid) {
         String sql = "select ref.primaryStorageUuid" +
-                " from LocalStorageHostRefVO ref, PrimaryStorageCapacityVO cap" +
+                " from LocalStorageHostRefVO ref, PrimaryStorageCapacityVO cap, PrimaryStorageVO pri" +
                 " where cap.uuid = ref.primaryStorageUuid" +
+                " and ref.primaryStorageUuid = pri.uuid" +
+                " and pri.state = :state" +
+                " and pri.status = :status" +
                 " and ref.hostUuid = :huuid" +
                 " group by ref.primaryStorageUuid" +
                 " order by cap.availableCapacity desc";
         TypedQuery<String> q = dbf.getEntityManager().createQuery(sql, String.class);
         q.setParameter("huuid", hostUuid);
-        return q.getResultList().get(0);
+        q.setParameter("state", PrimaryStorageState.Enabled);
+        q.setParameter("status", PrimaryStorageStatus.Connected);
+        List<String> result = q.getResultList();
+        if(result.isEmpty()){
+            String clusterUuid = Q.New(HostVO.class).select(HostVO_.clusterUuid)
+                    .eq(HostVO_.uuid, hostUuid).findValue();
+            throw new OperationFailureException(operr("There is no LocalStorage primary storage[state=%s,status=%s] on the cluster[%s]. Check the state/status of primary storage and make sure they have been attached to clusters"
+                    , PrimaryStorageState.Enabled, PrimaryStorageStatus.Connected, clusterUuid));
+        }
+        return result.get(0);
+    }
+
+    @Transactional(readOnly = true)
+    private String getRequiredStorageUuid(String hostUuid, String psUuid){
+        if(psUuid == null){
+            return getMostFreeLocalStorageUuid(hostUuid);
+        }else if(Q.New(LocalStorageHostRefVO.class)
+                .eq(LocalStorageHostRefVO_.hostUuid, hostUuid)
+                .eq(LocalStorageHostRefVO_.primaryStorageUuid, psUuid)
+                .isExists()){
+            return psUuid;
+        }else if(!Q.New(PrimaryStorageVO.class)
+                .eq(PrimaryStorageVO_.uuid, psUuid)
+                .eq(PrimaryStorageVO_.type, LocalStorageConstants.LOCAL_STORAGE_TYPE)
+                .isExists()){
+            throw new OperationFailureException(argerr("the type of primary storage[uuid:%s] chosen is not local storage, " +
+                    "check if the resource can be created on other storage when cluster has attached local primary storage", psUuid));
+        }else {
+            return getMostFreeLocalStorageUuid(hostUuid);
+        }
     }
 
     @Override
     public void run(final FlowTrigger trigger, Map data) {
         final VmInstanceSpec spec = (VmInstanceSpec) data.get(VmInstanceConstant.Params.VmInstanceSpec.toString());
 
-        String localStorageUuid = getMostFreeLocalStorageUuid(spec.getDestHost().getUuid());
+        String localStorageUuid = getRequiredStorageUuid(spec.getDestHost().getUuid(), spec.getRequiredPrimaryStorageUuidForRootVolume());
 
         SimpleQuery<BackupStorageVO> bq = dbf.createQuery(BackupStorageVO.class);
         bq.select(BackupStorageVO_.type);
@@ -126,7 +167,22 @@ public class LocalStorageAllocateCapacityFlow implements Flow {
                 AllocatePrimaryStorageMsg amsg = new AllocatePrimaryStorageMsg();
                 amsg.setSize(dinv.getDiskSize());
                 amsg.setRequiredHostUuid(spec.getDestHost().getUuid());
-                if (hasOtherNonLocalStoragePrimaryStorage) {
+                if(spec.getRequiredPrimaryStorageUuidForDataVolume() != null && hasOtherNonLocalStoragePrimaryStorage){
+
+                    PrimaryStorageVO requiredPrimaryStorageUuidForDataVolume = dbf.findByUuid(spec.getRequiredPrimaryStorageUuidForDataVolume(), PrimaryStorageVO.class);
+                    // data volume ps set local
+                    if(requiredPrimaryStorageUuidForDataVolume.getType().equals(LocalStorageConstants.LOCAL_STORAGE_TYPE)){
+                        ErrorCode errorCode = operr("The cluster mounts multiple primary storage[%s(%s), other non-LocalStorage primary storage], primaryStorageUuidForDataVolume cannot be specified %s",
+                                requiredPrimaryStorageUuidForDataVolume.getUuid(), requiredPrimaryStorageUuidForDataVolume.getType(),
+                                LocalStorageConstants.LOCAL_STORAGE_TYPE);
+                        trigger.fail(errorCode);
+                        return;
+                    }
+
+                    amsg.setRequiredPrimaryStorageUuid(spec.getRequiredPrimaryStorageUuidForDataVolume());
+                } else if (spec.getRequiredPrimaryStorageUuidForDataVolume() != null && !hasOtherNonLocalStoragePrimaryStorage){
+                    amsg.setRequiredPrimaryStorageUuid(spec.getRequiredPrimaryStorageUuidForDataVolume());
+                } else if (hasOtherNonLocalStoragePrimaryStorage) {
                     amsg.setAllocationStrategy(dinv.getAllocatorStrategy());
                     amsg.addExcludePrimaryStorageUuid(localStorageUuid);
                     amsg.addExcludeAllocatorStrategy(LocalStorageConstants.LOCAL_STORAGE_ALLOCATOR_STRATEGY);

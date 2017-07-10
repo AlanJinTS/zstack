@@ -7,18 +7,18 @@ doc {
 
     category "负载均衡"
 
-    desc "创建负载均衡监听器"
+    desc """创建负载均衡监听器"""
 
     rest {
         request {
 			url "POST /v1/load-balancers/{loadBalancerUuid}/listeners"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APICreateLoadBalancerListenerMsg.class
 
-            desc ""
+            desc """"""
             
 			params {
 

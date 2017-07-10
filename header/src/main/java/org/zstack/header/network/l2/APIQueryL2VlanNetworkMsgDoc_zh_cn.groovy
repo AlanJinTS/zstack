@@ -2,26 +2,26 @@ package org.zstack.header.network.l2
 
 import org.zstack.header.network.l2.APIQueryL2VlanNetworkReply
 import org.zstack.header.query.APIQueryMessage
+import org.zstack.header.query.APIQueryMessage
 
 doc {
     title "查询二层Vlan网络(QueryL2VlanNetwork)"
 
     category "network.l2.vlan"
 
-    desc "查询二层Vlan网络"
+    desc """查询二层Vlan网络"""
 
     rest {
         request {
 			url "GET /v1/l2-networks/vlan"
-
 			url "GET /v1/l2-networks/vlan/{uuid}"
 
+			header (Authorization: 'OAuth the-session-uuid')
 
-            header (OAuth: 'the-session-uuid')
 
             clz APIQueryL2VlanNetworkMsg.class
 
-            desc ""
+            desc """"""
             
 			params APIQueryMessage.class
         }

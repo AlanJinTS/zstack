@@ -10,9 +10,8 @@ import org.zstack.header.rest.RestRequest;
 /**
  * Created by weiwang on 09/03/2017.
  */
-@Action(category = VxlanNetworkPoolConstant.ACTION_CATEGORY)
 @RestRequest(
-        path = "/l2-networks/vxlan-pool/{l2NetworkUuid}/vni-range",
+        path = "/l2-networks/vxlan-pool/{l2NetworkUuid}/vni-ranges",
         method = HttpMethod.POST,
         responseClass = APICreateVniRangeEvent.class,
         parameterName = "params"
@@ -25,10 +24,10 @@ public class APICreateVniRangeMsg extends APICreateMessage implements L2NetworkM
     @APIParam(required = false, maxLength = 2048)
     private String description;
 
-    @APIParam
+    @APIParam(numberRange = {0, 16777214})
     private Integer startVni;
 
-    @APIParam
+    @APIParam(numberRange = {0, 16777214})
     private Integer endVni;
 
     @APIParam
@@ -74,7 +73,7 @@ public class APICreateVniRangeMsg extends APICreateMessage implements L2NetworkM
         this.l2NetworkUuid = l2NetworkUuid;
     }
 
-    public static APICreateVniRangeMsg __exmaple__() {
+    public static APICreateVniRangeMsg __example__() {
         APICreateVniRangeMsg msg = new APICreateVniRangeMsg();
 
         msg.setName("TestVniRange");

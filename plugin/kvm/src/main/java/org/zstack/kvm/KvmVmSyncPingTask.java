@@ -8,7 +8,7 @@ import org.zstack.core.db.DatabaseFacade;
 import org.zstack.core.db.SimpleQuery;
 import org.zstack.core.db.SimpleQuery.Op;
 import org.zstack.core.errorcode.ErrorFacade;
-import org.zstack.core.logging.Log;
+import org.zstack.core.notification.N;
 import org.zstack.core.thread.ChainTask;
 import org.zstack.core.thread.SyncTaskChain;
 import org.zstack.core.thread.ThreadFacade;
@@ -33,11 +33,10 @@ import org.zstack.kvm.KVMConstant.KvmVmState;
 import org.zstack.utils.Utils;
 import org.zstack.utils.logging.CLogger;
 
-import static org.zstack.core.Platform.operr;
-
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+
+import static org.zstack.core.Platform.operr;
 
 public class KvmVmSyncPingTask extends VmTracer implements KVMPingAgentNoFailureExtensionPoint, KVMHostConnectExtensionPoint,
         HostConnectionReestablishExtensionPoint, HostAfterConnectedExtensionPoint, Component {
@@ -123,8 +122,7 @@ public class KvmVmSyncPingTask extends VmTracer implements KVMPingAgentNoFailure
                         q.add(VmInstanceVO_.uuid, Op.EQ, cmd.vmUuid);
                         VmInstanceState stateInDb = q.findValue();
                         if (stateInDb == null) {
-                            //TODO: handle anonymous vm
-                            logger.warn(String.format("an anonymous VM[uuid:%s, state:%s] is detected on the host[uuid:%s]", cmd.hostUuid, state, cmd.hostUuid));
+                            N.New(HostVO.class, cmd.hostUuid).warn_("an anonymous VM[uuid:%s, state:%s] is detected on the host[uuid:%s]", cmd.hostUuid, state, cmd.hostUuid);
                             chain.next();
                             return;
                         }
@@ -138,9 +136,10 @@ public class KvmVmSyncPingTask extends VmTracer implements KVMPingAgentNoFailure
                             @Override
                             public void run(MessageReply reply) {
                                 if (!reply.isSuccess()) {
-                                    //TODO
-                                    logger.warn(String.format("failed to report state[%s] of the vm[uuid:%s] on the host[uuid:%s]",
-                                            cmd.vmState, cmd.vmUuid, cmd.hostUuid));
+                                    N.New(HostVO.class, cmd.hostUuid).warn_("failed to report state[%s] of the vm[uuid:%s] on the host[uuid:%s], %s",
+                                            cmd.vmState, cmd.vmUuid, cmd.hostUuid, reply.getError());
+                                    N.New(VmInstanceVO.class, cmd.vmUuid).warn_("failed to report state[%s] of the vm[uuid:%s] on the host[uuid:%s], %s",
+                                            cmd.vmState, cmd.vmUuid, cmd.hostUuid, reply.getError());
                                 }
 
                                 chain.next();
@@ -171,36 +170,7 @@ public class KvmVmSyncPingTask extends VmTracer implements KVMPingAgentNoFailure
 
     @Override
     public void afterHostConnected(final HostInventory host) {
-        SimpleQuery<VmInstanceVO> q = dbf.createQuery(VmInstanceVO.class);
-        q.select(VmInstanceVO_.uuid);
-        q.add(VmInstanceVO_.state, Op.EQ, VmInstanceState.Unknown);
-        q.add(VmInstanceVO_.hostUuid, Op.EQ, host.getUuid());
-        final List<String> vmUuids = q.listValue();
-        if (!vmUuids.isEmpty()) {
-            CheckVmStateOnHypervisorMsg msg = new CheckVmStateOnHypervisorMsg();
-            msg.setVmInstanceUuids(vmUuids);
-            msg.setHostUuid(host.getUuid());
-            bus.makeTargetServiceIdByResourceUuid(msg, HostConstant.SERVICE_ID, host.getUuid());
-            bus.send(msg, new CloudBusCallBack(null) {
-                @Override
-                public void run(MessageReply reply) {
-                    if (!reply.isSuccess()) {
-                        //TODO
-                        logger.warn(String.format("unable to check states of vms[uuids:%s] on the host[uuid:%s], %s",
-                                vmUuids, host.getUuid(), reply.getError()));
-                        return;
-                    }
-
-                    CheckVmStateOnHypervisorReply r = reply.castReply();
-                    Map<String, VmInstanceState> states = new HashMap<String, VmInstanceState>();
-                    for (Map.Entry<String, String> e : r.getStates().entrySet()) {
-                        states.put(e.getKey(), VmInstanceState.valueOf(e.getValue()));
-                    }
-
-                    reportVmState(host.getUuid(), states);
-                }
-            });
-        }
+        //syncVm has done the same work, so abandon it
     }
 
     @Override
@@ -208,8 +178,6 @@ public class KvmVmSyncPingTask extends VmTracer implements KVMPingAgentNoFailure
         return new NoRollbackFlow() {
             @Override
             public void run(final FlowTrigger trigger, Map data) {
-                new Log(context.getInventory().getUuid()).log(KVMHostLabel.SYNC_VM_STATE);
-
                 syncVm(context.getInventory(), new Completion(trigger) {
                     String __name__ = "sync-vm-state";
 
@@ -242,9 +210,8 @@ public class KvmVmSyncPingTask extends VmTracer implements KVMPingAgentNoFailure
 
             @Override
             public void fail(ErrorCode errorCode) {
-                //TODO
-                logger.warn(String.format("failed to sync VM states on the KVM host[uuid:%s, name:%s, ip:%s], %s",
-                        host.getUuid(), host.getName(), host.getManagementIp(), errorCode));
+                N.New(HostVO.class, host.getUuid()).warn_("failed to sync VM states on the host[uuid:%s, name:%s], %s",
+                        host.getUuid(), host.getName(), errorCode);
                 completion.done();
             }
         });

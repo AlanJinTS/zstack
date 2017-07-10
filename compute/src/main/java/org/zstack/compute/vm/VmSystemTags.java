@@ -35,6 +35,10 @@ public class VmSystemTags {
     public static String CONSOLE_PASSWORD_TOKEN = "consolePassword";
     public static PatternedSystemTag CONSOLE_PASSWORD = new PatternedSystemTag(String.format("consolePassword::{%s}",CONSOLE_PASSWORD_TOKEN),VmInstanceVO.class);
 
+    // set usbRedirect::true to enable usb redirect
+    public static String USB_REDIRECT_TOKEN = "usbRedirect";
+    public static PatternedSystemTag USB_REDIRECT = new PatternedSystemTag(String.format("usbRedirect::{%s}",USB_REDIRECT_TOKEN),VmInstanceVO.class);
+
     public static String INSTANCEOFFERING_ONLINECHANGE_TOKEN = "instanceOfferingOnliechange";
     public static PatternedSystemTag INSTANCEOFFERING_ONLIECHANGE = new PatternedSystemTag(String.format("instanceOfferingOnlinechange::{%s}",INSTANCEOFFERING_ONLINECHANGE_TOKEN),VmInstanceVO.class);
 
@@ -47,5 +51,9 @@ public class VmSystemTags {
     );
     public static String VM_INJECT_QEMUGA_TOKEN = "qemuga";
     public static PatternedSystemTag VM_INJECT_QEMUGA = new PatternedSystemTag(String.format("%s", VM_INJECT_QEMUGA_TOKEN), VmInstanceVO.class);
+
+
+    public static String PRIMARY_STORAGE_UUID_FOR_DATA_VOLUME_TOKEN = "primaryStorageUuidForDataVolume";
+    public static PatternedSystemTag PRIMARY_STORAGE_UUID_FOR_DATA_VOLUME = new PatternedSystemTag(String.format("primaryStorageUuidForDataVolume::{%s}", PRIMARY_STORAGE_UUID_FOR_DATA_VOLUME_TOKEN), VmInstanceVO.class);
 
 }

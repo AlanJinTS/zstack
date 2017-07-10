@@ -7,6 +7,8 @@ import org.zstack.header.rest.RestRequest;
 
 import java.util.List;
 
+import static java.util.Arrays.asList;
+
 /**
  * Created by xing5 on 2017/3/18.
  */
@@ -36,5 +38,12 @@ public class APIUpdateNotificationsStatusMsg extends APIMessage {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public static APIUpdateNotificationsStatusMsg __example__() {
+        APIUpdateNotificationsStatusMsg msg = new APIUpdateNotificationsStatusMsg();
+        msg.setUuids(asList(uuid(),uuid()));
+        msg.setStatus("Read");
+        return msg;
     }
 }

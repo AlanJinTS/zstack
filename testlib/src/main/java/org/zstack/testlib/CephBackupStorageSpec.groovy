@@ -2,12 +2,10 @@ package org.zstack.testlib
 
 import org.springframework.http.HttpEntity
 import org.zstack.core.db.Q
-import org.zstack.header.agent.AgentResponse
 import org.zstack.storage.ceph.backup.CephBackupStorageBase
 import org.zstack.storage.ceph.backup.CephBackupStorageMonBase
 import org.zstack.storage.ceph.backup.CephBackupStorageMonVO
 import org.zstack.storage.ceph.backup.CephBackupStorageMonVO_
-import org.zstack.storage.ceph.primary.CephPrimaryStorageMonBase
 import org.zstack.utils.gson.JSONObjectUtil
 
 /**
@@ -86,6 +84,16 @@ class CephBackupStorageSpec extends BackupStorageSpec {
             return rsp
         }
 
+        simulator(CephBackupStorageBase.CHECK_POOL_PATH) { HttpEntity<String> e, EnvSpec spec ->
+            def cmd = JSONObjectUtil.toObject(e.body, CephBackupStorageBase.CheckCmd.class)
+            CephBackupStorageSpec bspec = spec.specByUuid(cmd.uuid)
+            assert bspec != null: "cannot find the backup storage[uuid:${cmd.uuid}}, check your environment()"
+
+            def rsp = new CephBackupStorageBase.CheckRsp()
+            rsp.success = true
+            return rsp
+        }
+
         simulator(CephBackupStorageBase.DOWNLOAD_IMAGE_PATH) {
             def rsp = new CephBackupStorageBase.DownloadRsp()
             rsp.size = 0
@@ -126,6 +134,11 @@ class CephBackupStorageSpec extends BackupStorageSpec {
             rsp.success = true
             return rsp
 
+        }
+
+        simulator(CephBackupStorageMonBase.ECHO_PATH) { HttpEntity<String> entity ->
+            checkHttpCallType(entity, true)
+            return [:]
         }
     }
 }

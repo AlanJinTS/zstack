@@ -22,6 +22,9 @@ public class GetOssBucketNameFromRemoteAction extends AbstractAction {
         }
     }
 
+    @Param(required = true, nonempty = false, nullElements = false, emptyString = true, noTrim = false)
+    public java.lang.String dataCenterUuid;
+
     @Param(required = false)
     public java.util.List systemTags;
 
@@ -66,7 +69,7 @@ public class GetOssBucketNameFromRemoteAction extends AbstractAction {
     RestInfo getRestInfo() {
         RestInfo info = new RestInfo();
         info.httpMethod = "GET";
-        info.path = "/hybrid/oss/remote";
+        info.path = "/hybrid/oss/{dataCenterUuid}/remote";
         info.needSession = true;
         info.needPoll = false;
         info.parameterName = "";

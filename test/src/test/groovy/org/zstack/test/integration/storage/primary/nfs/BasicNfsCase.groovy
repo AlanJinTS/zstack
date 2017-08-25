@@ -3,11 +3,7 @@ package org.zstack.test.integration.storage.primary.nfs
 import org.springframework.http.HttpEntity
 import org.zstack.core.cloudbus.CloudBus
 import org.zstack.core.db.Q
-import org.zstack.header.host.HostStatus
-import org.zstack.header.host.HostVO
-import org.zstack.header.host.HostVO_
-import org.zstack.header.host.ReconnectHostMsg
-import org.zstack.header.host.ReconnectHostReply
+import org.zstack.header.host.*
 import org.zstack.header.network.service.NetworkServiceType
 import org.zstack.header.storage.primary.PrimaryStorageCapacityVO
 import org.zstack.header.vm.VmInstanceState
@@ -16,11 +12,9 @@ import org.zstack.header.vm.VmInstanceVO_
 import org.zstack.network.securitygroup.SecurityGroupConstant
 import org.zstack.network.service.virtualrouter.VirtualRouterConstant
 import org.zstack.network.service.virtualrouter.VirtualRouterVmVO
-import org.zstack.sdk.GetPrimaryStorageCapacityResult
 import org.zstack.sdk.HostInventory
 import org.zstack.sdk.PrimaryStorageInventory
 import org.zstack.sdk.ReconnectPrimaryStorageAction
-import org.zstack.sdk.VirtualRouterVmInventory
 import org.zstack.sdk.VmInstanceInventory
 import org.zstack.storage.primary.nfs.NfsPrimaryStorageKVMBackend
 import org.zstack.storage.primary.nfs.NfsPrimaryStorageKVMBackendCommands
@@ -31,8 +25,6 @@ import org.zstack.utils.data.SizeUnit
 
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-
-
 /**
  * Created by AlanJager on 2017/6/27.
  */
@@ -203,8 +195,22 @@ class BasicNfsCase extends SubCase {
 
             testReconnectPrimaryStorageWillCmdToAllHost()
             testUpdatePrimaryStorageMountPoint()
+            testUpdateNfsName()
             testReconnectHostWillRemountNfsPsOnTheHost()
             testConfirmSystemUsedCapacityEqualToNull()
+        }
+    }
+
+    private recoverEnvironment(){
+        env.cleanSimulatorAndMessageHandlers()
+        reconnectHost {
+            uuid = host1.uuid
+        }
+        reconnectHost {
+            uuid = host2.uuid
+        }
+        reconnectHost {
+            uuid = host3.uuid
         }
     }
 
@@ -242,11 +248,11 @@ class BasicNfsCase extends SubCase {
 
         retryInSecs {
             assert ret.error != null
-            List<HostVO> hosts = Q.New(HostVO.class).eq(HostVO_.status, HostStatus.Connected).list()
-            assert hosts.size() == 3
+            Long numOfHosts = Q.New(HostVO.class).eq(HostVO_.status, HostStatus.Connected).count()
+            assert numOfHosts == 0L // due to ping task, with 0.2% failure probability
         }
 
-        env.cleanSimulatorAndMessageHandlers()
+        recoverEnvironment()
     }
 
     void testUpdatePrimaryStorageMountPoint() {
@@ -266,7 +272,7 @@ class BasicNfsCase extends SubCase {
             uuid = vr.uuid
         }
 
-        assert Q.New(VmInstanceVO.class).eq(VmInstanceVO_.state, VmInstanceState.Stopped).count() == 2
+        assert Q.New(VmInstanceVO.class).eq(VmInstanceVO_.state, VmInstanceState.Stopped).count() == 2L
 
         String newMountPoint = "test:/tmp"
         updatePrimaryStorage {
@@ -278,6 +284,13 @@ class BasicNfsCase extends SubCase {
         assert cmd.newMountPoint == newMountPoint
 
         env.cleanSimulatorAndMessageHandlers()
+    }
+
+    void testUpdateNfsName(){
+        updatePrimaryStorage {
+            uuid = ps.uuid
+            name = "nfs_test"
+        }
     }
 
     void testReconnectHostWillRemountNfsPsOnTheHost() {

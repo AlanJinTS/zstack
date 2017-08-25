@@ -17,6 +17,7 @@ import org.zstack.core.errorcode.ErrorFacade;
 import org.zstack.core.thread.AsyncThread;
 import org.zstack.header.AbstractService;
 import org.zstack.header.apimediator.ApiMessageInterceptionException;
+import org.zstack.header.errorcode.ErrorCode;
 import org.zstack.header.errorcode.OperationFailureException;
 import org.zstack.header.errorcode.SysErrors;
 import org.zstack.header.exception.CloudRuntimeException;
@@ -27,6 +28,9 @@ import org.zstack.header.message.Message;
 import org.zstack.header.message.MessageReply;
 import org.zstack.header.storage.primary.*;
 import org.zstack.header.tag.SystemTagValidator;
+import org.zstack.header.vm.VmHaExtensionPoint;
+import org.zstack.header.vm.VmInstanceInventory;
+import org.zstack.header.vm.VmInstanceStartExtensionPoint;
 import org.zstack.search.GetQuery;
 import org.zstack.search.SearchQuery;
 import org.zstack.tag.TagManager;
@@ -42,7 +46,7 @@ import java.util.*;
 import java.util.concurrent.Callable;
 
 public class PrimaryStorageManagerImpl extends AbstractService implements PrimaryStorageManager,
-        ManagementNodeChangeListener, ManagementNodeReadyExtensionPoint {
+        ManagementNodeChangeListener, ManagementNodeReadyExtensionPoint, VmInstanceStartExtensionPoint {
     private static final CLogger logger = Utils.getLogger(PrimaryStorageManager.class);
 
     @Autowired
@@ -394,7 +398,14 @@ public class PrimaryStorageManagerImpl extends AbstractService implements Primar
         spec.setAllocationMessage(msg);
         spec.setAvoidPrimaryStorageUuids(msg.getExcludePrimaryStorageUuids());
         List<PrimaryStorageInventory> ret = strategy.allocateAllCandidates(spec);
-        //
+
+        if (msg.isDryRun()){
+            // check capacity has been done before
+            AllocatePrimaryStorageDryRunReply r = new AllocatePrimaryStorageDryRunReply();
+            r.setPrimaryStorageInventories(ret);
+            bus.reply(msg, r);
+            return;
+        }
         Iterator<PrimaryStorageInventory> it = ret.iterator();
         List<String> errs = new ArrayList<>();
         PrimaryStorageInventory target = null;
@@ -584,5 +595,44 @@ public class PrimaryStorageManagerImpl extends AbstractService implements Primar
         logger.debug(String.format("management node[uuid:%s] joins, starts load primary storage ...",
                 Platform.getManagementServerId()));
         loadPrimaryStorage();
+    }
+
+    private void checkVmAllVolumePrimaryStorageState(String vmUuid) {
+        String sql = "select uuid from PrimaryStorageVO where uuid in (" +
+                " select distinct(primaryStorageUuid) from VolumeVO" +
+                " where vmInstanceUuid = :vmUuid and primaryStorageUuid is not null)" +
+                " and state = :psState";
+        List<String> result = SQL.New(sql, String.class)
+                .param("vmUuid", vmUuid)
+                .param("psState", PrimaryStorageState.Maintenance)
+                .list();
+        if (result != null && !result.isEmpty()) {
+            throw new OperationFailureException(argerr("the VM[uuid:%s] volume stored location primary storage is in a state of maintenance", vmUuid));
+        }
+    }
+
+    @Override
+    public String preStartVm(VmInstanceInventory inv) {
+        try{
+            checkVmAllVolumePrimaryStorageState(inv.getUuid());
+            return null;
+        }catch (Exception e){
+            return e.getMessage();
+        }
+    }
+
+    @Override
+    public void beforeStartVm(VmInstanceInventory inv) {
+        // do nothing
+    }
+
+    @Override
+    public void afterStartVm(VmInstanceInventory inv) {
+        // do nothing
+    }
+
+    @Override
+    public void failedToStartVm(VmInstanceInventory inv, ErrorCode reason) {
+        // do nothing
     }
 }

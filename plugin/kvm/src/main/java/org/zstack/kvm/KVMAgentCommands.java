@@ -245,6 +245,7 @@ public class KVMAgentCommands {
         private String qemuImgVersion;
         private String libvirtVersion;
         private String hvmCpuFlag;
+        private List<String> ipAddresses;
 
         public String getHvmCpuFlag() {
             return hvmCpuFlag;
@@ -268,6 +269,14 @@ public class KVMAgentCommands {
 
         public void setQemuImgVersion(String qemuImgVersion) {
             this.qemuImgVersion = qemuImgVersion;
+        }
+
+        public List<String> getIpAddresses() {
+            return ipAddresses;
+        }
+
+        public void setIpAddresses(List<String> ipAddresses) {
+            this.ipAddresses = ipAddresses;
         }
     }
 
@@ -720,6 +729,33 @@ public class KVMAgentCommands {
         private String videoType;
         private boolean useNuma;
         private String usbRedirect;
+        private Integer VDIMonitorNumber;
+        private boolean useBootMenu;
+        private boolean kvmHiddenState;
+
+        public Integer getVDIMonitorNumber() {
+            return VDIMonitorNumber;
+        }
+
+        public void setVDIMonitorNumber(Integer VDIMonitorNumber) {
+            this.VDIMonitorNumber = VDIMonitorNumber;
+        }
+
+        public boolean isKvmHiddenState() {
+            return kvmHiddenState;
+        }
+
+        public void setKvmHiddenState(boolean kvmHiddenState) {
+            this.kvmHiddenState = kvmHiddenState;
+        }
+
+        public void setUseBootMenu(boolean useBootMenu) {
+            this.useBootMenu = useBootMenu;
+        }
+
+        public boolean isUseBootMenu() {
+            return useBootMenu;
+        }
 
         public String getUsbRedirect() {
             return usbRedirect;

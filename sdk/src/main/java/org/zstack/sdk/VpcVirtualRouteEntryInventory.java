@@ -18,11 +18,11 @@ public class VpcVirtualRouteEntryInventory  {
         return this.type;
     }
 
-    public VRouterType vRouterType;
-    public void setVRouterType(VRouterType vRouterType) {
+    public java.lang.String vRouterType;
+    public void setVRouterType(java.lang.String vRouterType) {
         this.vRouterType = vRouterType;
     }
-    public VRouterType getVRouterType() {
+    public java.lang.String getVRouterType() {
         return this.vRouterType;
     }
 
@@ -42,12 +42,12 @@ public class VpcVirtualRouteEntryInventory  {
         return this.destinationCidrBlock;
     }
 
-    public java.lang.String nextHopVRiUuid;
-    public void setNextHopVRiUuid(java.lang.String nextHopVRiUuid) {
-        this.nextHopVRiUuid = nextHopVRiUuid;
+    public java.lang.String nextHopId;
+    public void setNextHopId(java.lang.String nextHopId) {
+        this.nextHopId = nextHopId;
     }
-    public java.lang.String getNextHopVRiUuid() {
-        return this.nextHopVRiUuid;
+    public java.lang.String getNextHopId() {
+        return this.nextHopId;
     }
 
     public java.lang.String virtualRouterUuid;

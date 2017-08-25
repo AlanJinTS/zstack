@@ -34,6 +34,14 @@ public class BaremetalChassisInventory  {
         return this.ipmiAddress;
     }
 
+    public java.lang.String ipmiPort;
+    public void setIpmiPort(java.lang.String ipmiPort) {
+        this.ipmiPort = ipmiPort;
+    }
+    public java.lang.String getIpmiPort() {
+        return this.ipmiPort;
+    }
+
     public java.lang.String ipmiUsername;
     public void setIpmiUsername(java.lang.String ipmiUsername) {
         this.ipmiUsername = ipmiUsername;
@@ -50,12 +58,12 @@ public class BaremetalChassisInventory  {
         return this.ipmiPassword;
     }
 
-    public java.lang.Boolean provisioned;
-    public void setProvisioned(java.lang.Boolean provisioned) {
-        this.provisioned = provisioned;
+    public java.lang.String status;
+    public void setStatus(java.lang.String status) {
+        this.status = status;
     }
-    public java.lang.Boolean getProvisioned() {
-        return this.provisioned;
+    public java.lang.String getStatus() {
+        return this.status;
     }
 
     public java.sql.Timestamp createDate;

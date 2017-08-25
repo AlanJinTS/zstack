@@ -1,7 +1,6 @@
 package org.zstack.storage.primary.smp;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.transaction.annotation.Transactional;
 import org.zstack.compute.vm.ImageBackupStorageSelector;
 import org.zstack.core.cloudbus.CloudBusCallBack;
 import org.zstack.core.componentloader.PluginRegistry;
@@ -51,14 +50,14 @@ import org.zstack.utils.logging.CLogger;
 import org.zstack.utils.path.PathUtil;
 
 import static java.util.Arrays.asList;
-import static org.zstack.core.Platform.argerr;
 import static org.zstack.core.Platform.operr;
+import static org.zstack.core.progress.ProgressReportService.reportProgress;
+import static org.zstack.header.storage.backup.BackupStorageConstant.*;
+import static org.zstack.utils.ProgressUtils.getEndFromStage;
 
 import javax.persistence.Tuple;
-import javax.persistence.TypedQuery;
 import java.io.File;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Created by xing5 on 2016/3/26.
@@ -74,6 +73,8 @@ public class KvmBackend extends HypervisorBackend {
     protected PrimaryStoragePhysicalCapacityManager physicalCapacityMgr;
     @Autowired
     protected PluginRegistry pluginRgty;
+    @Autowired
+    protected SMPPrimaryStorageFactory primaryStorageFactory;
 
     public static class AgentCmd {
         public String mountPoint;
@@ -634,28 +635,6 @@ public class KvmBackend extends HypervisorBackend {
         }).start();
     }
 
-    @Transactional(readOnly = true)
-    private List<String> findConnectedHosts(int num) {
-        String sql = "select h.uuid from HostVO h, PrimaryStorageClusterRefVO ref where ref.clusterUuid = h.clusterUuid and" +
-                " ref.primaryStorageUuid = :psUuid and h.status = :status and h.hypervisorType = :htype";
-        TypedQuery<String> q = dbf.getEntityManager().createQuery(sql, String.class);
-        q.setParameter("psUuid", self.getUuid());
-        q.setParameter("status", HostStatus.Connected);
-        q.setParameter("htype", KVMConstant.KVM_HYPERVISOR_TYPE);
-        q.setMaxResults(num);
-        List<String> hostUuids = q.getResultList();
-        Collections.shuffle(hostUuids);
-        return hostUuids;
-    }
-
-    private String findConnectedHost() {
-        List<String> huuids = findConnectedHosts(50);
-        if (huuids.isEmpty()) {
-            throw new OperationFailureException(operr("cannot find any connected host to perform the operation"));
-        }
-        return huuids.get(0);
-    }
-
     class Do {
         private List<String> hostUuids;
         private List<ErrorCode> errors = new ArrayList<ErrorCode>();
@@ -666,7 +645,9 @@ public class KvmBackend extends HypervisorBackend {
         }
 
         public Do() {
-            hostUuids = findConnectedHosts(50);
+            hostUuids = new ArrayList<>();
+            List<HostInventory> hinvs = primaryStorageFactory.getConnectedHostForOperation(getSelfInventory(),0,50);
+            hinvs.forEach(it -> hostUuids.add(it.getUuid()));
             if (hostUuids.isEmpty()) {
                 throw new OperationFailureException(operr("cannot find any connected host to perform the operation, it seems all KVM hosts" +
                                 " in the clusters attached with the shared mount point storage[uuid:%s] are disconnected",
@@ -801,7 +782,31 @@ public class KvmBackend extends HypervisorBackend {
         final VolumeSnapshotInventory sp = msg.getStruct().getCurrent();
         VolumeInventory vol = VolumeInventory.valueOf(dbf.findByUuid(sp.getVolumeUuid(), VolumeVO.class));
 
-        final String hostUuid = findConnectedHost();
+        String hostUuid;
+        String connectedHostUuid = primaryStorageFactory.getConnectedHostForOperation(getSelfInventory()).get(0).getUuid();
+        if (vol.getVmInstanceUuid() != null){
+            Tuple t = Q.New(VmInstanceVO.class)
+                    .select(VmInstanceVO_.state, VmInstanceVO_.hostUuid)
+                    .eq(VmInstanceVO_.uuid, vol.getVmInstanceUuid())
+                    .findTuple();
+            VmInstanceState state = t.get(0, VmInstanceState.class);
+            String vmHostUuid = t.get(1, String.class);
+
+            if (state == VmInstanceState.Running || state == VmInstanceState.Paused){
+                DebugUtils.Assert(vmHostUuid != null,
+                        String.format("vm[uuid:%s] is Running or Paused, but has no hostUuid", vol.getVmInstanceUuid()));
+                hostUuid = vmHostUuid;
+            } else if (state == VmInstanceState.Stopped){
+                hostUuid = connectedHostUuid;
+            } else {
+                completion.fail(operr("vm[uuid:%s] is not Running, Paused or Stopped, current state[%s]",
+                        vol.getVmInstanceUuid(), state));
+                return;
+            }
+        } else {
+            hostUuid = connectedHostUuid;
+        }
+
 
         TakeSnapshotOnHypervisorMsg hmsg = new TakeSnapshotOnHypervisorMsg();
         hmsg.setHostUuid(hostUuid);
@@ -1066,6 +1071,7 @@ public class KvmBackend extends HypervisorBackend {
                         new Do().go(CREATE_TEMPLATE_FROM_VOLUME_PATH, cmd, new ReturnValueCompletion<AgentRsp>(trigger) {
                             @Override
                             public void success(AgentRsp returnValue) {
+                                reportProgress(getEndFromStage(CREATE_ROOT_VOLUME_TEMPLATE_CREATE_TEMPORARY_TEMPLATE_STAGE));
                                 success = true;
                                 trigger.next();
                             }
@@ -1120,6 +1126,7 @@ public class KvmBackend extends HypervisorBackend {
                         uploader.uploadBits(msg.getImageInventory().getUuid(), backupStorageInstallPath, temporaryTemplatePath, new ReturnValueCompletion<String>(trigger) {
                             @Override
                             public void success(String bsPath) {
+                                reportProgress(getEndFromStage(CREATE_ROOT_VOLUME_TEMPLATE_UPLOAD_STAGE));
                                 backupStorageInstallPath = bsPath;
                                 trigger.next();
                             }
@@ -1140,7 +1147,7 @@ public class KvmBackend extends HypervisorBackend {
                         deleteBits(temporaryTemplatePath, new Completion(trigger) {
                             @Override
                             public void success() {
-                                // pass
+                                reportProgress(getEndFromStage(CREATE_ROOT_VOLUME_TEMPLATE_SUBSEQUENT_EVENT_STAGE));
                             }
 
                             @Override
@@ -1422,7 +1429,7 @@ public class KvmBackend extends HypervisorBackend {
 
     @Override
     void handle(SyncVolumeSizeOnPrimaryStorageMsg msg, final ReturnValueCompletion<SyncVolumeSizeOnPrimaryStorageReply> completion) {
-        String hostUuid = findConnectedHost();
+        String hostUuid = primaryStorageFactory.getConnectedHostForOperation(getSelfInventory()).get(0).getUuid();
         final GetVolumeSizeCmd cmd = new GetVolumeSizeCmd();
         cmd.installPath = msg.getInstallPath();
         cmd.volumeUuid = msg.getVolumeUuid();

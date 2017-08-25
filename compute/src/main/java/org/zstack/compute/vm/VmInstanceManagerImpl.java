@@ -31,6 +31,7 @@ import org.zstack.header.configuration.DiskOfferingInventory;
 import org.zstack.header.configuration.DiskOfferingVO;
 import org.zstack.header.configuration.DiskOfferingVO_;
 import org.zstack.header.configuration.InstanceOfferingVO;
+import org.zstack.header.core.Completion;
 import org.zstack.header.core.FutureCompletion;
 import org.zstack.header.core.NoErrorCompletion;
 import org.zstack.header.core.ReturnValueCompletion;
@@ -46,19 +47,16 @@ import org.zstack.header.host.HostStatus;
 import org.zstack.header.identity.*;
 import org.zstack.header.identity.Quota.QuotaOperator;
 import org.zstack.header.identity.Quota.QuotaPair;
+import org.zstack.header.image.*;
 import org.zstack.header.image.ImageConstant.ImageMediaType;
-import org.zstack.header.image.ImageInventory;
-import org.zstack.header.image.ImagePlatform;
-import org.zstack.header.image.ImageVO;
-import org.zstack.header.image.ImageVO_;
 import org.zstack.header.managementnode.ManagementNodeReadyExtensionPoint;
 import org.zstack.header.message.*;
 import org.zstack.header.network.l3.*;
+import org.zstack.header.quota.QuotaConstant;
 import org.zstack.header.search.SearchOp;
 import org.zstack.header.storage.backup.BackupStorageType;
 import org.zstack.header.storage.backup.BackupStorageVO;
-import org.zstack.header.storage.primary.PrimaryStorageType;
-import org.zstack.header.storage.primary.PrimaryStorageVO;
+import org.zstack.header.storage.primary.*;
 import org.zstack.header.tag.SystemTagCreateMessageValidator;
 import org.zstack.header.tag.SystemTagVO;
 import org.zstack.header.tag.SystemTagValidator;
@@ -82,8 +80,9 @@ import org.zstack.utils.function.Function;
 import org.zstack.utils.gson.JSONObjectUtil;
 import org.zstack.utils.logging.CLogger;
 import org.zstack.utils.network.NetworkUtils;
-import static org.zstack.core.Platform.*;
+
 import javax.persistence.Tuple;
+import javax.persistence.TupleElement;
 import javax.persistence.TypedQuery;
 import java.sql.Timestamp;
 import java.util.*;
@@ -92,6 +91,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static java.util.Arrays.asList;
+import static org.zstack.core.Platform.argerr;
+import static org.zstack.core.Platform.operr;
 import static org.zstack.utils.CollectionDSL.list;
 
 public class VmInstanceManagerImpl extends AbstractService implements
@@ -212,6 +213,8 @@ public class VmInstanceManagerImpl extends AbstractService implements
             handle((APIListVmNicMsg) msg);
         } else if (msg instanceof APIGetCandidateZonesClustersHostsForCreatingVmMsg) {
             handle((APIGetCandidateZonesClustersHostsForCreatingVmMsg) msg);
+        } else if (msg instanceof APIGetCandidatePrimaryStoragesForCreatingVmMsg) {
+            handle((APIGetCandidatePrimaryStoragesForCreatingVmMsg) msg);
         } else if (msg instanceof APIGetInterdependentL3NetworksImagesMsg) {
             handle((APIGetInterdependentL3NetworksImagesMsg) msg);
         } else if (msg instanceof APIGetCandidateVmForAttachingIsoMsg) {
@@ -551,6 +554,108 @@ public class VmInstanceManagerImpl extends AbstractService implements
         });
     }
 
+    private void handle(APIGetCandidatePrimaryStoragesForCreatingVmMsg msg) {
+        APIGetCandidatePrimaryStoragesForCreatingVmReply reply = new APIGetCandidatePrimaryStoragesForCreatingVmReply();
+        List<AllocatePrimaryStorageMsg> msgs = new ArrayList<>();
+
+        Set<String> psTypes = new HashSet<>();
+        List<String> clusterUuids = new ArrayList<>();
+        List<DiskOfferingInventory> dataOfferings = new ArrayList<>();
+        ImageInventory imageInv = new SQLBatchWithReturn<ImageInventory>(){
+
+            @Override
+            protected ImageInventory scripts() {
+                List<String> dataOfferingUuids = msg.getDataDiskOfferingUuids() == null ? new ArrayList<>() :
+                        msg.getDataDiskOfferingUuids();
+
+                sql("select bs.type from BackupStorageVO bs, ImageBackupStorageRefVO ref" +
+                        " where ref.imageUuid =:imageUuid" +
+                        " and bs.uuid = ref.backupStorageUuid", String.class)
+                        .param("imageUuid", msg.getImageUuid())
+                        .list().forEach(it ->
+                        psTypes.addAll(hostAllocatorMgr.getPrimaryStorageTypesByBackupStorageTypeFromMetrics((String)it)
+                        ));
+
+                clusterUuids.addAll(sql("select distinct ref.clusterUuid" +
+                        " from L2NetworkClusterRefVO ref, L3NetworkVO l3" +
+                        " where l3.uuid in (:l3Uuids)" +
+                        " and ref.l2NetworkUuid = l3.l2NetworkUuid", String.class)
+                        .param("l3Uuids", msg.getL3NetworkUuids())
+                        .list());
+
+                for (String diskUuid : dataOfferingUuids){
+                    dataOfferings.add(DiskOfferingInventory.valueOf(
+                            (DiskOfferingVO) q(DiskOfferingVO.class)
+                                    .eq(DiskOfferingVO_.uuid, diskUuid)
+                                    .find()
+                    ));
+                }
+
+                ImageVO imageVO = q(ImageVO.class).eq(ImageVO_.uuid, msg.getImageUuid()).find();
+                return ImageInventory.valueOf(imageVO);
+            }
+        }.execute();
+
+
+        // allocate ps for root volume
+        AllocatePrimaryStorageMsg rmsg = new AllocatePrimaryStorageMsg();
+        rmsg.setDryRun(true);
+        rmsg.setImageUuid(msg.getImageUuid());
+        rmsg.setRequiredClusterUuids(clusterUuids);
+        if (ImageMediaType.ISO.toString().equals(imageInv.getMediaType())) {
+            if (msg.getRootDiskOfferingUuid() == null){
+                throw new OperationFailureException(operr("rootVolumeOffering is needed when image media type is ISO"));
+            }
+            Tuple t = Q.New(DiskOfferingVO.class).eq(DiskOfferingVO_.uuid, msg.getRootDiskOfferingUuid())
+                    .select(DiskOfferingVO_.diskSize, DiskOfferingVO_.allocatorStrategy).findTuple();
+            rmsg.setSize((long)t.get(0));
+            rmsg.setAllocationStrategy((String)t.get(1));
+            rmsg.setDiskOfferingUuid(msg.getRootDiskOfferingUuid());
+        } else {
+            rmsg.setSize(imageInv.getSize());
+        }
+        rmsg.setPurpose(PrimaryStorageAllocationPurpose.CreateNewVm.toString());
+        rmsg.setRequiredPrimaryStorageTypes(new ArrayList<>(psTypes));
+        bus.makeLocalServiceId(rmsg, PrimaryStorageConstant.SERVICE_ID);
+        msgs.add(rmsg);
+
+        // allocate ps for data volumes
+        for (DiskOfferingInventory dinv : dataOfferings) {
+            AllocatePrimaryStorageMsg amsg = new AllocatePrimaryStorageMsg();
+            amsg.setDryRun(true);
+            amsg.setSize(dinv.getDiskSize());
+            amsg.setRequiredClusterUuids(clusterUuids);
+            amsg.setAllocationStrategy(dinv.getAllocatorStrategy());
+            amsg.setDiskOfferingUuid(dinv.getUuid());
+            amsg.setRequiredPrimaryStorageTypes(new ArrayList<>(psTypes));
+            bus.makeLocalServiceId(amsg, PrimaryStorageConstant.SERVICE_ID);
+            msgs.add(amsg);
+        }
+
+        new While<>(msgs).all((amsg, completion) ->{
+            bus.send(amsg, new CloudBusCallBack(completion) {
+                @Override
+                public void run(MessageReply r) {
+                    if (r.isSuccess()){
+                        AllocatePrimaryStorageDryRunReply re = r.castReply();
+                        if (amsg.getImageUuid() != null){
+                            reply.setRootVolumePrimaryStorages(re.getPrimaryStorageInventories());
+                        } else {
+                            reply.getDataVolumePrimaryStorages().put(amsg.getDiskOfferingUuid(), re.getPrimaryStorageInventories());
+                        }
+                    }
+                    completion.done();
+                }
+            });
+
+        }).run(new NoErrorCompletion(msg) {
+            @Override
+            public void done() {
+                bus.reply(msg, reply);
+            }
+        });
+    }
+
     private void handle(APIListVmNicMsg msg) {
         List<VmNicVO> vos = dbf.listByApiMessage(msg, VmNicVO.class);
         List<VmNicInventory> invs = VmNicInventory.valueOf(vos);
@@ -876,7 +981,7 @@ public class VmInstanceManagerImpl extends AbstractService implements
         });
     }
 
-    private void installSystemTagValidator() {
+    private void installHostnameValidator() {
         class HostNameValidator implements SystemTagCreateMessageValidator, SystemTagValidator {
             private void validateHostname(String tag, String hostname) {
                 DomainValidator domainValidator = DomainValidator.getInstance(true);
@@ -911,13 +1016,13 @@ public class VmInstanceManagerImpl extends AbstractService implements
                 String l3Uuid = token.get(VmSystemTags.STATIC_IP_L3_UUID_TOKEN);
                 if (!dbf.isExist(l3Uuid, L3NetworkVO.class)) {
                     throw new ApiMessageInterceptionException(argerr("L3 network[uuid:%s] not found. Please correct your system tag[%s] of static IP",
-                                    l3Uuid, sysTag));
+                            l3Uuid, sysTag));
                 }
 
                 String ip = token.get(VmSystemTags.STATIC_IP_TOKEN);
                 if (!NetworkUtils.isIpv4Address(ip)) {
                     throw new ApiMessageInterceptionException(argerr("%s is not a valid IPv4 address. Please correct your system tag[%s] of static IP",
-                                    ip, sysTag));
+                            ip, sysTag));
                 }
 
                 CheckIpAvailabilityMsg cmsg = new CheckIpAvailabilityMsg();
@@ -951,8 +1056,8 @@ public class VmInstanceManagerImpl extends AbstractService implements
                 if (!vos.isEmpty()) {
                     SystemTagVO sameTag = vos.get(0);
                     throw new ApiMessageInterceptionException(argerr("conflict hostname in system tag[%s];" +
-                                            " there has been a VM[uuid:%s] having hostname[%s] on L3 network[uuid:%s]",
-                                    tag, sameTag.getResourceUuid(), hostname, l3Uuid));
+                                    " there has been a VM[uuid:%s] having hostname[%s] on L3 network[uuid:%s]",
+                            tag, sameTag.getResourceUuid(), hostname, l3Uuid));
                 }
             }
 
@@ -990,6 +1095,54 @@ public class VmInstanceManagerImpl extends AbstractService implements
         HostNameValidator hostnameValidator = new HostNameValidator();
         tagMgr.installCreateMessageValidator(VmInstanceVO.class.getSimpleName(), hostnameValidator);
         VmSystemTags.HOSTNAME.installValidator(hostnameValidator);
+
+    }
+
+    private void installUserdataValidator() {
+        class UserDataValidator implements SystemTagCreateMessageValidator, SystemTagValidator {
+
+            private void check(String resourceUuid, Class resourceType) {
+                int existUserdataTagCount = VmSystemTags.USERDATA.getTags(resourceUuid, resourceType).size();
+                if (existUserdataTagCount > 0) {
+                    throw new OperationFailureException(argerr(
+                            "Already have one userdata systemTag for vm[uuid: %s].",
+                            resourceUuid));
+                }
+            }
+
+            @Override
+            public void validateSystemTag(String resourceUuid, Class resourceType, String systemTag) {
+                if (!VmSystemTags.USERDATA.isMatch(systemTag)) {
+                    return;
+                }
+                check(resourceUuid, resourceType);
+            }
+
+            @Override
+            public void validateSystemTagInCreateMessage(APICreateMessage msg) {
+                int userdataTagCount = 0;
+                for (String sysTag : msg.getSystemTags()) {
+                    if (VmSystemTags.USERDATA.isMatch(sysTag)) {
+                        if (userdataTagCount > 0) {
+                            throw new OperationFailureException(argerr(
+                                    "Shouldn't be more than one userdata systemTag for one vm."));
+                        }
+                        userdataTagCount++;
+
+                        check(msg.getResourceUuid(), VmInstanceVO.class);
+                    }
+                }
+            }
+        }
+
+        UserDataValidator userDataValidator = new UserDataValidator();
+        tagMgr.installCreateMessageValidator(VmInstanceVO.class.getSimpleName(), userDataValidator);
+        VmSystemTags.USERDATA.installValidator(userDataValidator);
+    }
+
+    private void installSystemTagValidator() {
+        installHostnameValidator();
+        installUserdataValidator();
     }
 
     @Override
@@ -1145,9 +1298,6 @@ public class VmInstanceManagerImpl extends AbstractService implements
                     } else if (msg instanceof APIRecoverVmInstanceMsg) {
                         check((APIRecoverVmInstanceMsg) msg, pairs);
                     }
-//                    } else if (msg instanceof APICreateSchedulerJobMessage) {
-//                        check((APICreateSchedulerJobMessage) msg, pairs);
-//                    }
                 } else {
                     if (msg instanceof APIChangeResourceOwnerMsg) {
                         check((APIChangeResourceOwnerMsg) msg, pairs);
@@ -1200,11 +1350,6 @@ public class VmInstanceManagerImpl extends AbstractService implements
                 usage.setName(VolumeConstant.QUOTA_VOLUME_SIZE);
                 usage.setUsed(new VmQuotaUtil().getUsedAllVolumeSize(accountUuid));
                 usages.add(usage);
-
-//                usage = new Quota.QuotaUsage();
-//                usage.setName(SchedulerConstant.QUOTA_SCHEDULER_NUM);
-//                usage.setUsed(new VmQuotaUtil().getUsedSchedulerNum(accountUuid));
-//                usages.add(usage);
 
                 return usages;
             }
@@ -1616,25 +1761,6 @@ public class VmInstanceManagerImpl extends AbstractService implements
                     new QuotaUtil().CheckQuota(quotaCompareInfo);
                 }
             }
-
-//            private void check(APICreateSchedulerJobMessage msg, Map<String, Quota.QuotaPair> pairs) {
-//                String currentAccountUuid = msg.getSession().getAccountUuid();
-//                String resourceTargetOwnerAccountUuid = msg.getSession().getAccountUuid();
-//
-//                long schedulerNumQuota = pairs.get(SchedulerConstant.QUOTA_SCHEDULER_NUM).getValue();
-//                long schedulerNumUsed = new VmQuotaUtil().getUsedSchedulerNum(resourceTargetOwnerAccountUuid);
-//                {
-//                    QuotaUtil.QuotaCompareInfo quotaCompareInfo;
-//                    quotaCompareInfo = new QuotaUtil.QuotaCompareInfo();
-//                    quotaCompareInfo.currentAccountUuid = currentAccountUuid;
-//                    quotaCompareInfo.resourceTargetOwnerAccountUuid = resourceTargetOwnerAccountUuid;
-//                    quotaCompareInfo.quotaName = SchedulerConstant.QUOTA_SCHEDULER_NUM;
-//                    quotaCompareInfo.quotaValue = schedulerNumQuota;
-//                    quotaCompareInfo.currentUsed = schedulerNumUsed;
-//                    quotaCompareInfo.request = 1;
-//                    new QuotaUtil().CheckQuota(quotaCompareInfo);
-//                }
-//            }
         };
 
         Quota quota = new Quota();
@@ -1642,38 +1768,33 @@ public class VmInstanceManagerImpl extends AbstractService implements
 
         p = new QuotaPair();
         p.setName(VmInstanceConstant.QUOTA_VM_TOTAL_NUM);
-        p.setValue(20);
+        p.setValue(QuotaConstant.QUOTA_VM_TOTAL_NUM);
         quota.addPair(p);
 
         p = new QuotaPair();
         p.setName(VmInstanceConstant.QUOTA_VM_RUNNING_NUM);
-        p.setValue(20);
+        p.setValue(QuotaConstant.QUOTA_VM_RUNNING_NUM);
         quota.addPair(p);
 
         p = new QuotaPair();
         p.setName(VmInstanceConstant.QUOTA_VM_RUNNING_CPU_NUM);
-        p.setValue(80);
+        p.setValue(QuotaConstant.QUOTA_VM_RUNNING_CPU_NUM);
         quota.addPair(p);
 
         p = new QuotaPair();
         p.setName(VmInstanceConstant.QUOTA_VM_RUNNING_MEMORY_SIZE);
-        p.setValue(SizeUnit.GIGABYTE.toByte(80));
+        p.setValue(QuotaConstant.QUOTA_VM_RUNNING_MEMORY_SIZE);
         quota.addPair(p);
 
         p = new QuotaPair();
         p.setName(VolumeConstant.QUOTA_DATA_VOLUME_NUM);
-        p.setValue(40);
+        p.setValue(QuotaConstant.QUOTA_DATA_VOLUME_NUM);
         quota.addPair(p);
 
         p = new QuotaPair();
         p.setName(VolumeConstant.QUOTA_VOLUME_SIZE);
-        p.setValue(SizeUnit.TERABYTE.toByte(10));
+        p.setValue(QuotaConstant.QUOTA_VOLUME_SIZE);
         quota.addPair(p);
-
-//        p = new Quota.QuotaPair();
-//        p.setName(SchedulerConstant.QUOTA_SCHEDULER_NUM);
-//        p.setValue(80);
-//        quota.addPair(p);
 
         quota.addMessageNeedValidation(APICreateVmInstanceMsg.class);
         quota.addMessageNeedValidation(APIRecoverVmInstanceMsg.class);
@@ -1682,13 +1803,6 @@ public class VmInstanceManagerImpl extends AbstractService implements
         quota.addMessageNeedValidation(APIStartVmInstanceMsg.class);
         quota.addMessageNeedValidation(APIChangeResourceOwnerMsg.class);
         quota.addMessageNeedValidation(StartVmInstanceMsg.class);
-        // scheduler
-//        quota.addMessageNeedValidation(APICreateSchedulerJobMessage.class);
-//        quota.addMessageNeedValidation(APICreateStartVmInstanceSchedulerJobMsg.class);
-//        quota.addMessageNeedValidation(APICreateVolumeSnapshotSchedulerJobMsg.class);
-//        quota.addMessageNeedValidation(APICreateRebootVmInstanceSchedulerJobMsg.class);
-//        quota.addMessageNeedValidation(APICreateStopVmInstanceSchedulerJobMsg.class);
-
 
         quota.setOperator(checker);
 
@@ -1935,7 +2049,11 @@ public class VmInstanceManagerImpl extends AbstractService implements
                     future.success();
                 }
             });
-            future.await();
+            future.await(TimeUnit.SECONDS.toMillis(30));
+            if (future.getErrorCode() != null){
+                logger.debug(String.format("%s when put vm into unknown during reconnect host, ignore it and continue.",
+                        future.getErrorCode().getDetails()));
+            }
         }
     }
 }

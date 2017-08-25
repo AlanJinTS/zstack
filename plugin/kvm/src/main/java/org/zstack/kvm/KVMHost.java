@@ -1,5 +1,6 @@
 package org.zstack.kvm;
 
+import org.apache.commons.lang.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,8 +18,6 @@ import org.zstack.core.ansible.AnsibleGlobalProperty;
 import org.zstack.core.ansible.AnsibleRunner;
 import org.zstack.core.ansible.SshFileMd5Checker;
 import org.zstack.core.db.Q;
-import org.zstack.core.db.SQL;
-import org.zstack.core.db.SQLBatch;
 import org.zstack.core.db.SimpleQuery;
 import org.zstack.core.db.SimpleQuery.Op;
 import org.zstack.core.errorcode.ErrorFacade;
@@ -65,9 +64,6 @@ import org.zstack.utils.path.PathUtil;
 import org.zstack.utils.ssh.Ssh;
 import org.zstack.utils.ssh.SshResult;
 import org.zstack.utils.ssh.SshShell;
-
-import static org.zstack.core.Platform.inerr;
-import static org.zstack.core.Platform.operr;
 
 import javax.persistence.TypedQuery;
 import java.util.*;
@@ -852,7 +848,7 @@ public class KVMHost extends HostBase implements Host {
 
         String url = buildUrl(msg.getPath());
         MessageCommandRecorder.record(msg.getCommandClassName());
-        new Http<>(url, msg.getCommand(), LinkedHashMap.class, TimeUnit.SECONDS, msg.getCommandTimeout())
+        new Http<>(url, msg.getCommand(), LinkedHashMap.class, TimeUnit.MILLISECONDS, msg.getCommandTimeout())
                 .call(new ReturnValueCompletion<LinkedHashMap>(msg, completion) {
             @Override
             public void success(LinkedHashMap ret) {
@@ -1886,6 +1882,7 @@ public class KVMHost extends HostBase implements Host {
         cmd.setClock(ImagePlatform.isType(platform, ImagePlatform.Windows, ImagePlatform.WindowsVirtio) ? "localtime" : "utc");
         cmd.setVideoType(VmGlobalConfig.VM_VIDEO_TYPE.value(String.class));
         cmd.setInstanceOfferingOnlineChange(VmSystemTags.INSTANCEOFFERING_ONLIECHANGE.getTokenByResourceUuid(spec.getVmInventory().getUuid(), VmSystemTags.INSTANCEOFFERING_ONLINECHANGE_TOKEN) != null);
+        cmd.setKvmHiddenState(VmGlobalConfig.KVM_HIDDEN_STATE.value(Boolean.class));
 
         VolumeTO rootVolume = new VolumeTO();
         rootVolume.setInstallPath(spec.getDestRootVolume().getInstallPath());
@@ -1897,11 +1894,10 @@ public class KVMHost extends HostBase implements Host {
         rootVolume.setWwn(setVolumeWwn(spec.getDestRootVolume().getUuid()));
         rootVolume.setCacheMode(KVMGlobalConfig.LIBVIRT_CACHE_MODE.value());
 
-        consoleMode = KVMGlobalConfig.VM_CONSOLE_MODE.value(String.class);
         nestedVirtualization = KVMGlobalConfig.NESTED_VIRTUALIZATION.value(String.class);
-        cmd.setConsoleMode(consoleMode);
         cmd.setNestedVirtualization(nestedVirtualization);
         cmd.setRootVolume(rootVolume);
+        cmd.setUseBootMenu(VmGlobalConfig.VM_BOOT_MENU.value(Boolean.class));
 
         List<VolumeTO> dataVolumes = new ArrayList<>(spec.getDestDataVolumes().size());
         for (VolumeInventory data : spec.getDestDataVolumes()) {
@@ -1942,7 +1938,10 @@ public class KVMHost extends HostBase implements Host {
         cmd.setHostManagementIp(self.getManagementIp());
         cmd.setConsolePassword(spec.getConsolePassword());
         cmd.setUsbRedirect(spec.getUsbRedirect());
+        cmd.setVDIMonitorNumber(Integer.valueOf(spec.getVDIMonitorNumber()));
         cmd.setUseNuma(VmGlobalConfig.NUMA.value(Boolean.class));
+        cmd.setConsoleMode("vnc");
+
         addons(spec, cmd);
         KVMHostInventory khinv = KVMHostInventory.valueOf(getSelf());
         try {
@@ -2443,9 +2442,9 @@ public class KVMHost extends HostBase implements Host {
         chain.done(new FlowDoneHandler(completion) {
             @Override
             public void handle(Map data) {
-                if(noAccessedStorage()){
+                if (noStorageAccessible()){
                     completion.fail(operr("host can not access any primary storage, please check network"));
-                }else {
+                } else {
                     completion.success();
                 }
             }
@@ -2459,17 +2458,22 @@ public class KVMHost extends HostBase implements Host {
         }).start();
     }
 
-    @Transactional
-    public boolean noAccessedStorage(){
-        long noAccessed = Q.New(PrimaryStorageHostRefVO.class)
+    @Transactional(readOnly = true)
+    private boolean noStorageAccessible(){
+        // detach ps will delete PrimaryStorageClusterRefVO first.
+        List<String> attachedPsUuids = Q.New(PrimaryStorageClusterRefVO.class)
+                .select(PrimaryStorageClusterRefVO_.primaryStorageUuid)
+                .eq(PrimaryStorageClusterRefVO_.clusterUuid, self.getClusterUuid())
+                .listValues();
+
+        long attachedPsCount = attachedPsUuids.size();
+        long inaccessiblePsCount = attachedPsCount == 0 ? 0 : Q.New(PrimaryStorageHostRefVO.class)
                 .eq(PrimaryStorageHostRefVO_.hostUuid, self.getUuid())
                 .eq(PrimaryStorageHostRefVO_.status, PrimaryStorageHostStatus.Disconnected)
+                .in(PrimaryStorageHostRefVO_.primaryStorageUuid, attachedPsUuids)
                 .count();
-        long all = Q.New(PrimaryStorageClusterRefVO.class)
-                .eq(PrimaryStorageClusterRefVO_.clusterUuid, self.getClusterUuid())
-                .count();
-        
-        return noAccessed == all && all > 0;
+
+        return inaccessiblePsCount == attachedPsCount && attachedPsCount > 0;
     }
 
     private void createHostVersionSystemTags(String distro, String release, String version) {
@@ -2720,6 +2724,17 @@ public class KVMHost extends HostBase implements Host {
                                         creator = KVMSystemTags.VIRTIO_SCSI.newSystemTagCreator(self.getUuid());
                                         creator.recreate = true;
                                         creator.create();
+                                    }
+
+                                    List<String> ips = ret.getIpAddresses();
+                                    if (ips != null) {
+                                        ips.remove(self.getManagementIp());
+                                        if (!ips.isEmpty()) {
+                                            creator = HostSystemTags.EXTRA_IPS.newSystemTagCreator(self.getUuid());
+                                            creator.setTagByTokens(map(e(HostSystemTags.EXTRA_IPS_TOKEN, StringUtils.join(ips, ","))));
+                                            creator.recreate = true;
+                                            creator.create();
+                                        }
                                     }
 
                                     trigger.next();

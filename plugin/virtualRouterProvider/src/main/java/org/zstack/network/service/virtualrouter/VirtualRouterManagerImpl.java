@@ -53,11 +53,10 @@ import org.zstack.header.tag.SystemTagLifeCycleListener;
 import org.zstack.header.vm.VmInstanceState;
 import org.zstack.header.vm.VmNicInventory;
 import org.zstack.identity.AccountManager;
-import org.zstack.network.service.eip.APIGetEipAttachableVmNicsMsg;
+import org.zstack.network.l3.L3NetworkSystemTags;
 import org.zstack.network.service.eip.EipConstant;
-import org.zstack.network.service.eip.GetCandidateVmNicsForEipInVirtualRouterExtensionPoint;
-import org.zstack.network.service.vip.VipVO;
-import org.zstack.network.service.vip.VipVO_;
+import org.zstack.network.service.eip.FilterVmNicsForEipInVirtualRouterExtensionPoint;
+import org.zstack.network.service.vip.VipInventory;
 import org.zstack.network.service.lb.*;
 import org.zstack.network.service.virtualrouter.eip.VirtualRouterEipRefInventory;
 import org.zstack.network.service.virtualrouter.portforwarding.VirtualRouterPortForwardingRuleRefInventory;
@@ -73,8 +72,6 @@ import org.zstack.utils.function.Function;
 import org.zstack.utils.logging.CLogger;
 import org.zstack.utils.network.NetworkUtils;
 
-import static org.codehaus.groovy.runtime.DefaultGroovyMethods.collect;
-import static org.codehaus.groovy.runtime.InvokerHelper.asList;
 import static org.zstack.core.Platform.argerr;
 import static org.zstack.core.Platform.operr;
 
@@ -89,10 +86,11 @@ import java.util.stream.Collectors;
 import static org.zstack.core.progress.ProgressReportService.createSubTaskProgress;
 import static org.zstack.utils.CollectionDSL.e;
 import static org.zstack.utils.CollectionDSL.map;
+import static java.util.Arrays.asList;
 
 public class VirtualRouterManagerImpl extends AbstractService implements VirtualRouterManager,
         PrepareDbInitialValueExtensionPoint, L2NetworkCreateExtensionPoint,
-        GlobalApiMessageInterceptor, AddExpandedQueryExtensionPoint, GetCandidateVmNicsForLoadBalancerExtensionPoint, GetCandidateVmNicsForEipInVirtualRouterExtensionPoint {
+        GlobalApiMessageInterceptor, AddExpandedQueryExtensionPoint, GetCandidateVmNicsForLoadBalancerExtensionPoint, FilterVmNicsForEipInVirtualRouterExtensionPoint {
 	private final static CLogger logger = Utils.getLogger(VirtualRouterManagerImpl.class);
 	
 	private final static List<String> supportedL2NetworkTypes = new ArrayList<String>();
@@ -326,21 +324,21 @@ public class VirtualRouterManagerImpl extends AbstractService implements Virtual
 
 
                 if (!l3Network.getUuid().equals(mgmtNwUuid) && !l3Network.getUuid().equals(pnwUuid)) {
-                    if (neededService.contains(NetworkServiceType.SNAT.toString()) && !msg.isNotGatewayForGuestL3Network()) {
+                    ApplianceVmNicSpec nicSpec = new ApplianceVmNicSpec();
+                    nicSpec.setL3NetworkUuid(l3Network.getUuid());
+                    if ((L3NetworkSystemTags.ROUTER_INTERFACE_IP.hasTag(l3Network.getUuid()) || neededService.contains(NetworkServiceType.SNAT.toString())) && !msg.isNotGatewayForGuestL3Network()) {
                         DebugUtils.Assert(!l3Network.getIpRanges().isEmpty(), String.format("how can l3Network[uuid:%s] doesn't have ip range", l3Network.getUuid()));
                         IpRangeInventory ipr = l3Network.getIpRanges().get(0);
-                        ApplianceVmNicSpec nicSpec = new ApplianceVmNicSpec();
                         nicSpec.setL3NetworkUuid(l3Network.getUuid());
                         nicSpec.setAcquireOnNetwork(false);
                         nicSpec.setNetmask(ipr.getNetmask());
                         nicSpec.setIp(ipr.getGateway());
                         nicSpec.setGateway(ipr.getGateway());
-                        aspec.getAdditionalNics().add(nicSpec);
-                    } else {
-                        ApplianceVmNicSpec nicSpec = new ApplianceVmNicSpec();
-                        nicSpec.setL3NetworkUuid(l3Network.getUuid());
-                        aspec.getAdditionalNics().add(nicSpec);
                     }
+                    if (L3NetworkSystemTags.ROUTER_INTERFACE_IP.hasTag(l3Network.getUuid())) {
+                        nicSpec.setIp(L3NetworkSystemTags.ROUTER_INTERFACE_IP.getTokenByResourceUuid(l3Network.getUuid(), L3NetworkSystemTags.ROUTER_INTERFACE_IP_TOKEN));
+                    }
+                    aspec.getAdditionalNics().add(nicSpec);
                 }
 
                 ApplianceVmNicSpec guestNicSpec = mgmtNicSpec.getL3NetworkUuid().equals(l3Network.getUuid()) ? mgmtNicSpec : CollectionUtils.find(aspec.getAdditionalNics(), new Function<ApplianceVmNicSpec, ApplianceVmNicSpec>() {
@@ -624,13 +622,15 @@ public class VirtualRouterManagerImpl extends AbstractService implements Virtual
         if (candidate.isEmpty()) {
             return new ArrayList<>(0);
         }
-        
-        SimpleQuery<NetworkServiceL3NetworkRefVO> q = dbf.createQuery(NetworkServiceL3NetworkRefVO.class);
-        q.select(NetworkServiceL3NetworkRefVO_.l3NetworkUuid);
-        q.add(NetworkServiceL3NetworkRefVO_.l3NetworkUuid, Op.IN, candidate);
-        q.add(NetworkServiceL3NetworkRefVO_.networkServiceType, Op.EQ, nsType.toString());
-        // no need to specify provider type, L3 networks identified by candidates are served by virtual router or vyos
-        return q.listValue();
+
+        // need to specify provider type due to that the provider might be Flat
+        return SQL.New("select ref.l3NetworkUuid from NetworkServiceL3NetworkRefVO ref, NetworkServiceProviderVO nspv" +
+                " where ref.l3NetworkUuid in (:candidate) and ref.networkServiceType = :stype" +
+                " and nspv.uuid = ref.networkServiceProviderUuid and nspv.type in (:ntype)")
+                .param("candidate", candidate)
+                .param("stype", nsType.toString())
+                .param("ntype", asList(VirtualRouterConstant.VIRTUAL_ROUTER_PROVIDER_TYPE, VyosConstants.VYOS_ROUTER_PROVIDER_TYPE))
+                .list();
     }
 
     @Override
@@ -1032,57 +1032,55 @@ public class VirtualRouterManagerImpl extends AbstractService implements Virtual
     }
 
     @Override
-    public List<VmNicInventory> getCandidateVmNicsForEipInVirtualRouter(APIGetEipAttachableVmNicsMsg msg, List<VmNicInventory> candidates) {
+    @Transactional(readOnly = true)
+    public List<VmNicInventory> filterVmNicsForEipInVirtualRouter(VipInventory vip, List<VmNicInventory> candidates) {
+        if (candidates.isEmpty()){
+            return candidates;
+        }
 
-        return new SQLBatchWithReturn<List<VmNicInventory>>(){
+        // 1.get the vm nics which are managed by vrouter or virtual router.
+        // it also means to ignore vm in flat.
+        List<String> privateL3Uuids = candidates.stream().map(VmNicInventory::getL3NetworkUuid).distinct()
+                .collect(Collectors.toList());
+        List<String> innerl3Uuids = SQL.New("select ref.l3NetworkUuid" +
+                " from NetworkServiceL3NetworkRefVO ref, NetworkServiceProviderVO pro" +
+                " where pro.type in (:providerTypes)" +
+                " and ref.networkServiceProviderUuid = pro.uuid" +
+                " and ref.l3NetworkUuid in (:l3Uuids)", String.class)
+                .param("l3Uuids", privateL3Uuids)
+                .param("providerTypes", Arrays.asList(
+                        VyosConstants.PROVIDER_TYPE.toString(),
+                        VirtualRouterConstant.PROVIDER_TYPE.toString()))
+                .list();
+        List<VmNicInventory> vmNicInVirtualRouter = candidates.stream().filter(nic ->
+                innerl3Uuids.contains(nic.getL3NetworkUuid()))
+                .collect(Collectors.toList());
 
-            @Override
-            protected List<VmNicInventory> scripts() {
+        if(vmNicInVirtualRouter.isEmpty()){
+            return candidates;
+        }
 
-                //1.get the vm nics which are managed by vrouter or virtual router and ignore vm in flat
-                List<String>  inners = sql("select l3.uuid from L3NetworkVO l3, NetworkServiceL3NetworkRefVO ref, NetworkServiceProviderVO pro" +
-                        " where l3.uuid = ref.l3NetworkUuid and ref.networkServiceProviderUuid = pro.uuid and l3.uuid in (:l3Uuids)" +
-                        " and pro.type in (:providerType)", String.class)
-                        .param("l3Uuids", candidates.stream().map(VmNicInventory::getL3NetworkUuid).collect(Collectors.toList()))
-                        .param("providerType", Arrays.asList(VyosConstants.PROVIDER_TYPE.toString(),VirtualRouterConstant.PROVIDER_TYPE.toString()))
-                        .list();
-                List<VmNicInventory> vmNicInVirtualRouter = candidates.stream().filter(nic -> inners.contains(nic.getL3NetworkUuid())).collect(Collectors.toList());
+        // 2.remove vm nic whose l3 don't peer vip's
+        List<String> peerL3Uuids = SQL.New("select l3.uuid" +
+                " from VmNicVO nic, L3NetworkVO l3"  +
+                " where nic.vmInstanceUuid in " +
+                " (" +
+                " select vm.uuid" +
+                " from VmNicVO nic, ApplianceVmVO vm" +
+                " where nic.l3NetworkUuid = :l3NetworkUuid" +
+                " and nic.vmInstanceUuid = vm.uuid" +
+                " )"+
+                " and l3.uuid = nic.l3NetworkUuid" +
+                " and l3.system = :isSystem")
+                .param("l3NetworkUuid", vip.getL3NetworkUuid())
+                .param("isSystem", false)
+                .list();
 
-                if(vmNicInVirtualRouter.size() == 0){
-                    return candidates;
-                }
-
-                //2.check if the l3 of vm nic is peer l3 of the vip.
-                // if not, remove it
-                VipVO vip = sql("select vip" +
-                        " from VipVO vip, EipVO eip" +
-                        " where eip.uuid = :eipUuid" +
-                        " and eip.vipUuid = vip.uuid")
-                        .param("eipUuid", msg.getEipUuid()).find();
-
-                List<String> managementL3Uuids = sql("select vm.managementNetworkUuid from VipVO vip, ApplianceVmVO vm" +
-                        " where vip.uuid = :vipUuid" +
-                        " and vm.defaultRouteL3NetworkUuid = vip.l3NetworkUuid")
-                        .param("vipUuid",vip.getUuid()).list();
-
-                if(managementL3Uuids.size() == 0){
-                    candidates.removeAll(vmNicInVirtualRouter);
-                    return candidates;
-                }
-
-                List<String> peerL3Uuids = sql("select l3NetworkUuid from VmNicVO"  +
-                        " where vmInstanceUuid in (select uuid from  ApplianceVmVO where defaultRouteL3NetworkUuid = :publicL3Uuid)" +
-                        " and l3NetworkUuid != :publicL3Uuid" +
-                        " and l3NetworkUuid not in (:managementL3Uuids)")
-                        .param("managementL3Uuids",managementL3Uuids)
-                        .param("publicL3Uuid",vip.getL3NetworkUuid())
-                        .list();
-
-                candidates.removeAll(vmNicInVirtualRouter.stream().filter(nic -> !peerL3Uuids.contains(nic.getL3NetworkUuid())).collect(Collectors.toList()));
-                return candidates;
-
-            }
-        }.execute();
+        List<VmNicInventory> notPeerL3Nics = vmNicInVirtualRouter.stream().filter(nic ->
+                !peerL3Uuids.contains(nic.getL3NetworkUuid()))
+                .collect(Collectors.toList());
+        candidates.removeAll(notPeerL3Nics);
+        return candidates;
     }
 
     @Override

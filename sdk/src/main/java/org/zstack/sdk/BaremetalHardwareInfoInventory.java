@@ -10,12 +10,12 @@ public class BaremetalHardwareInfoInventory  {
         return this.uuid;
     }
 
-    public java.lang.String ipmiAddress;
-    public void setIpmiAddress(java.lang.String ipmiAddress) {
-        this.ipmiAddress = ipmiAddress;
+    public java.lang.String chassisUuid;
+    public void setChassisUuid(java.lang.String chassisUuid) {
+        this.chassisUuid = chassisUuid;
     }
-    public java.lang.String getIpmiAddress() {
-        return this.ipmiAddress;
+    public java.lang.String getChassisUuid() {
+        return this.chassisUuid;
     }
 
     public java.lang.String type;

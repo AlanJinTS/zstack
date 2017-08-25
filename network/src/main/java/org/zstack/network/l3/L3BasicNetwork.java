@@ -22,6 +22,7 @@ import org.zstack.header.message.*;
 import org.zstack.header.network.l3.*;
 import org.zstack.header.network.service.*;
 import org.zstack.identity.AccountManager;
+import org.zstack.tag.SystemTagCreator;
 import org.zstack.tag.TagManager;
 import org.zstack.utils.CollectionUtils;
 import org.zstack.utils.Utils;
@@ -37,6 +38,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+
+import static org.zstack.utils.CollectionDSL.e;
+import static org.zstack.utils.CollectionDSL.map;
 
 @Configurable(preConstruction = true, autowire = Autowire.BY_TYPE)
 public class L3BasicNetwork implements L3Network {
@@ -225,7 +229,11 @@ public class L3BasicNetwork implements L3Network {
         AllocateIpReply reply = new AllocateIpReply();
         UsedIpInventory ip = ias.allocateIp(msg);
         if (ip == null) {
-            reply.setError(errf.instantiateErrorCode(L3Errors.ALLOCATE_IP_ERROR, String.format("IP allocator strategy[%s] returns nothing, because no ip is available in this l3Network[name:%s, uuid:%s]. maybe some vm already has this IP [ip:%s]", strategyType, self.getName(), self.getUuid(),msg.getRequiredIp())));
+            String reason = msg.getRequiredIp() == null ?
+                    String.format("no ip is available in this l3Network[name:%s, uuid:%s]", self.getName(), self.getUuid()) :
+                    String.format("IP[%s] is not available", msg.getRequiredIp());
+            reply.setError(errf.instantiateErrorCode(L3Errors.ALLOCATE_IP_ERROR,
+                    String.format("IP allocator strategy[%s] failed, because %s", strategyType, reason)));
         } else {
             logger.debug(String.format("Ip allocator strategy[%s] successfully allocates an ip[%s]", strategyType, printer.print(ip)));
             reply.setIpInventory(ip);
@@ -261,6 +269,10 @@ public class L3BasicNetwork implements L3Network {
             handle((APIUpdateIpRangeMsg) msg);
         } else if (msg instanceof APICheckIpAvailabilityMsg) {
             handle((APICheckIpAvailabilityMsg) msg);
+        } else if (msg instanceof APISetL3NetworkRouterInterfaceIpMsg) {
+            handle((APISetL3NetworkRouterInterfaceIpMsg) msg);
+        } else if (msg instanceof APIGetL3NetworkRouterInterfaceIpMsg) {
+            handle((APIGetL3NetworkRouterInterfaceIpMsg) msg);
         } else {
             bus.dealWithUnknownMessage(msg);
         }
@@ -304,6 +316,41 @@ public class L3BasicNetwork implements L3Network {
         APICheckIpAvailabilityReply reply = new APICheckIpAvailabilityReply();
         reply.setAvailable(checkIpAvailability(msg.getIp()));
         bus.reply(msg, reply);
+    }
+
+    private void handle(final APIGetL3NetworkRouterInterfaceIpMsg msg) {
+        APIGetL3NetworkRouterInterfaceIpReply reply = new APIGetL3NetworkRouterInterfaceIpReply();
+        if (L3NetworkSystemTags.ROUTER_INTERFACE_IP.hasTag(msg.getL3NetworkUuid())) {
+            reply.setRouterInterfaceIp(L3NetworkSystemTags.ROUTER_INTERFACE_IP.getTokenByResourceUuid(msg.getL3NetworkUuid(), L3NetworkSystemTags.ROUTER_INTERFACE_IP_TOKEN));
+            bus.reply(msg, reply);
+            return;
+        }
+
+        List<IpRangeVO> ipRangeVOS = Q.New(IpRangeVO.class).eq(IpRangeVO_.l3NetworkUuid, msg.getL3NetworkUuid()).list();
+        if (ipRangeVOS == null || ipRangeVOS.isEmpty()) {
+            reply.setRouterInterfaceIp(null);
+            bus.reply(msg, reply);
+        } else {
+            reply.setRouterInterfaceIp(ipRangeVOS.get(0).getGateway());
+            bus.reply(msg, reply);
+        }
+    }
+
+    private void handle(final APISetL3NetworkRouterInterfaceIpMsg msg) {
+        APISetL3NetworkRouterInterfaceIpEvent event = new APISetL3NetworkRouterInterfaceIpEvent(msg.getId());
+        L3NetworkSystemTags.ROUTER_INTERFACE_IP.delete(msg.getRouterInterfaceIp());
+
+        SystemTagCreator creator = L3NetworkSystemTags.ROUTER_INTERFACE_IP.newSystemTagCreator(msg.getL3NetworkUuid());
+        creator.ignoreIfExisting = false;
+        creator.inherent = false;
+        creator.setTagByTokens(
+                map(
+                        e(L3NetworkSystemTags.ROUTER_INTERFACE_IP_TOKEN, msg.getRouterInterfaceIp())
+                )
+        );
+        creator.create();
+
+        bus.publish(event);
     }
 
     private void handle(APIDetachNetworkServiceFromL3NetworkMsg msg) {

@@ -6,14 +6,12 @@ import org.zstack.core.CoreGlobalProperty;
 import org.zstack.core.Platform;
 import org.zstack.core.asyncbatch.AsyncBatchRunner;
 import org.zstack.core.asyncbatch.LoopAsyncBatch;
+import org.zstack.core.asyncbatch.While;
 import org.zstack.core.cloudbus.*;
 import org.zstack.core.componentloader.PluginRegistry;
 import org.zstack.core.config.GlobalConfig;
 import org.zstack.core.config.GlobalConfigUpdateExtensionPoint;
-import org.zstack.core.db.DatabaseFacade;
-import org.zstack.core.db.SQL;
-import org.zstack.core.db.SQLBatchWithReturn;
-import org.zstack.core.db.SimpleQuery;
+import org.zstack.core.db.*;
 import org.zstack.core.db.SimpleQuery.Op;
 import org.zstack.core.defer.Defer;
 import org.zstack.core.defer.Deferred;
@@ -41,6 +39,7 @@ import org.zstack.header.message.APIMessage;
 import org.zstack.header.message.Message;
 import org.zstack.header.message.MessageReply;
 import org.zstack.header.message.NeedQuotaCheckMessage;
+import org.zstack.header.quota.QuotaConstant;
 import org.zstack.header.rest.RESTFacade;
 import org.zstack.header.search.SearchOp;
 import org.zstack.header.storage.backup.*;
@@ -823,6 +822,32 @@ public class ImageManagerImpl extends AbstractService implements ImageManager, M
                     }
                 });
 
+                flow(new NoRollbackFlow() {
+                    String __name__ = String.format("sync-image-size");
+
+                    @Override
+                    public void run(final FlowTrigger trigger, Map data) {
+
+                        new While<>(targetBackupStorages).all((arg, completion) -> {
+                            SyncImageSizeMsg smsg = new SyncImageSizeMsg();
+                            smsg.setBackupStorageUuid(arg.getUuid());
+                            smsg.setImageUuid(imageVO.getUuid());
+                            bus.makeTargetServiceIdByResourceUuid(smsg, ImageConstant.SERVICE_ID, imageVO.getUuid());
+                            bus.send(smsg, new CloudBusCallBack(completion) {
+                                @Override
+                                public void run(MessageReply reply) {
+                                    completion.done();
+                                }
+                            });
+                         }).run(new NoErrorCompletion(trigger) {
+                            @Override
+                            public void done() {
+                                trigger.next();
+                            }
+                        });
+                    }
+                });
+
                 done(new FlowDoneHandler(msg) {
                     @Override
                     public void handle(Map data) {
@@ -921,6 +946,17 @@ public class ImageManagerImpl extends AbstractService implements ImageManager, M
             }
         }.execute();
 
+        List<ImageBackupStorageRefVO> refs = new ArrayList<>();
+        for (String uuid : msg.getBackupStorageUuids()) {
+            ImageBackupStorageRefVO ref = new ImageBackupStorageRefVO();
+            ref.setInstallPath("");
+            ref.setBackupStorageUuid(uuid);
+            ref.setStatus(ImageStatus.Downloading);
+            ref.setImageUuid(ivo.getUuid());
+            ref = dbf.persistAndRefresh(ref);
+            refs.add(ref);
+        }
+
         Defer.guard(() -> dbf.remove(ivo));
 
         final ImageInventory inv = ImageInventory.valueOf(ivo);
@@ -940,12 +976,7 @@ public class ImageManagerImpl extends AbstractService implements ImageManager, M
             }
         });
 
-        CollectionUtils.safeForEach(pluginRgty.getExtensionList(AddImageExtensionPoint.class), new ForEachFunction<AddImageExtensionPoint>() {
-            @Override
-            public void run(AddImageExtensionPoint ext) {
-                ext.beforeAddImage(inv);
-            }
-        });
+        CollectionUtils.safeForEach(pluginRgty.getExtensionList(AddImageExtensionPoint.class), ext -> ext.beforeAddImage(inv));
 
         new LoopAsyncBatch<DownloadImageMsg>(msg) {
             AtomicBoolean success = new AtomicBoolean(false);
@@ -960,13 +991,10 @@ public class ImageManagerImpl extends AbstractService implements ImageManager, M
                 return new AsyncBatchRunner() {
                     @Override
                     public void run(NoErrorCompletion completion) {
-                        ImageBackupStorageRefVO ref = new ImageBackupStorageRefVO();
-                        ref.setImageUuid(ivo.getUuid());
-                        ref.setInstallPath("");
-                        ref.setBackupStorageUuid(dmsg.getBackupStorageUuid());
-                        ref.setStatus(ImageStatus.Downloading);
-                        dbf.persist(ref);
-
+                        ImageBackupStorageRefVO ref = Q.New(ImageBackupStorageRefVO.class)
+                                .eq(ImageBackupStorageRefVO_.imageUuid, ivo.getUuid())
+                                .eq(ImageBackupStorageRefVO_.backupStorageUuid, dmsg.getBackupStorageUuid())
+                                .find();
                         bus.send(dmsg, new CloudBusCallBack(completion) {
                             @Override
                             public void run(MessageReply reply) {
@@ -1372,12 +1400,12 @@ public class ImageManagerImpl extends AbstractService implements ImageManager, M
 
         Quota.QuotaPair p = new Quota.QuotaPair();
         p.setName(ImageConstant.QUOTA_IMAGE_NUM);
-        p.setValue(20);
+        p.setValue(QuotaConstant.QUOTA_IMAGE_NUM);
         quota.addPair(p);
 
         p = new Quota.QuotaPair();
         p.setName(ImageConstant.QUOTA_IMAGE_SIZE);
-        p.setValue(SizeUnit.TERABYTE.toByte(10));
+        p.setValue(QuotaConstant.QUOTA_IMAGE_SIZE);
         quota.addPair(p);
 
         return list(quota);

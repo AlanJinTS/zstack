@@ -27,6 +27,7 @@ import org.zstack.header.core.workflow.*;
 import org.zstack.header.errorcode.ErrorCode;
 import org.zstack.header.errorcode.OperationFailureException;
 import org.zstack.header.errorcode.SysErrors;
+import org.zstack.header.exception.CloudRuntimeException;
 import org.zstack.header.host.*;
 import org.zstack.header.host.HostCanonicalEvents.HostDeletedData;
 import org.zstack.header.host.HostCanonicalEvents.HostStatusChangedData;
@@ -329,6 +330,7 @@ public abstract class HostBase extends AbstractHost {
                     evt.setError(errf.instantiateErrorCode(HostErrors.UNABLE_TO_RECONNECT_HOST, reply.getError()));
                     logger.debug(String.format("failed to reconnect host[uuid:%s] because %s", self.getUuid(), reply.getError()));
                 }else{
+                    self = dbf.reload(self);
                     evt.setInventory((getSelfInventory()));
                 }
                 bus.publish(evt);
@@ -592,6 +594,8 @@ public abstract class HostBase extends AbstractHost {
 
                 if(!Q.New(HostVO.class).eq(HostVO_.uuid, msg.getHostUuid()).isExists()){
                     reply.setNoReconnect(true);
+                    bus.reply(msg, reply);
+                    return;
                 }
 
                 changeConnectionState(HostStatusEvent.disconnected);
@@ -762,6 +766,11 @@ public abstract class HostBase extends AbstractHost {
     }
 
     protected boolean changeConnectionState(final HostStatusEvent event) {
+
+        if(!Q.New(HostVO.class).eq(HostVO_.uuid, self.getUuid()).isExists()){
+            throw new CloudRuntimeException(String.format("change host connection state fail, can not find the host[%s]", self.getUuid()));
+        }
+
         HostStatus before = self.getStatus();
         HostStatus next = before.nextStatus(event);
         if (before == next) {

@@ -25,6 +25,9 @@ public class SyncEcsSecurityGroupFromRemoteAction extends AbstractAction {
     @Param(required = true, nonempty = false, nullElements = false, emptyString = true, noTrim = false)
     public java.lang.String ecsVpcUuid;
 
+    @Param(required = false, nonempty = false, nullElements = false, emptyString = true, noTrim = false)
+    public java.lang.String securityGroupId;
+
     @Param(required = false)
     public java.lang.String resourceUuid;
 
@@ -75,11 +78,11 @@ public class SyncEcsSecurityGroupFromRemoteAction extends AbstractAction {
 
     RestInfo getRestInfo() {
         RestInfo info = new RestInfo();
-        info.httpMethod = "GET";
+        info.httpMethod = "PUT";
         info.path = "/hybrid/aliyun/security-group/{ecsVpcUuid}/sync";
         info.needSession = true;
         info.needPoll = true;
-        info.parameterName = "";
+        info.parameterName = "syncEcsSecurityGroupFromRemote";
         return info;
     }
 

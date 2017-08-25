@@ -75,11 +75,11 @@ public class UpdateEcsInstanceVncPasswordAction extends AbstractAction {
 
     RestInfo getRestInfo() {
         RestInfo info = new RestInfo();
-        info.httpMethod = "PUT";
-        info.path = "/hybrid/aliyun/ecs-vnc/{uuid}/actions";
+        info.httpMethod = "POST";
+        info.path = "/hybrid/aliyun/{uuid}/ecs-vnc";
         info.needSession = true;
         info.needPoll = true;
-        info.parameterName = "updateEcsInstanceVncPassword";
+        info.parameterName = "params";
         return info;
     }
 

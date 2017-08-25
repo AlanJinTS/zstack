@@ -25,14 +25,17 @@ public class CreateEcsVpcRemoteAction extends AbstractAction {
     @Param(required = true, nonempty = false, nullElements = false, emptyString = true, noTrim = false)
     public java.lang.String dataCenterUuid;
 
-    @Param(required = true, nonempty = false, nullElements = false, emptyString = true, noTrim = false)
+    @Param(required = true, nonempty = false, nullElements = false, emptyString = false, noTrim = false)
     public java.lang.String cidrBlock;
 
-    @Param(required = true, maxLength = 64, nonempty = false, nullElements = false, emptyString = true, noTrim = false)
+    @Param(required = true, maxLength = 64, nonempty = false, nullElements = false, emptyString = false, noTrim = false)
     public java.lang.String name;
 
     @Param(required = false, maxLength = 256, nonempty = false, nullElements = false, emptyString = true, noTrim = false)
     public java.lang.String description;
+
+    @Param(required = true, validRegexValues = "[A-Za-z]{1}[A-Za-z0-9-_]{1,127}", nonempty = false, nullElements = false, emptyString = true, noTrim = false)
+    public java.lang.String vRouterName;
 
     @Param(required = false)
     public java.lang.String resourceUuid;

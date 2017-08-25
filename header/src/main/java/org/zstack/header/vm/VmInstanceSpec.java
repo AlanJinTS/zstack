@@ -182,10 +182,27 @@ public class VmInstanceSpec implements Serializable {
     private String userdata;
     private List<String> bootOrders;
     private boolean gcOnStopFailure;
-    // usbRedirect only for http call, need string type
     private String usbRedirect = "false";
+    private String enableRDP = "false";
+    private String VDIMonitorNumber = "1";
     private String consolePassword;
     private VmAccountPreference accountPerference;
+
+    public String getVDIMonitorNumber() {
+        return VDIMonitorNumber;
+    }
+
+    public void setVDIMonitorNumber(String VDIMonitorNumber) {
+        this.VDIMonitorNumber = VDIMonitorNumber;
+    }
+
+    public String getEnableRDP() {
+        return enableRDP;
+    }
+
+    public void setEnableRDP(String enableRDP) {
+        this.enableRDP = enableRDP;
+    }
 
     public String getUsbRedirect() {
         return usbRedirect;

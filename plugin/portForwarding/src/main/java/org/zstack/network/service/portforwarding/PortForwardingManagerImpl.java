@@ -33,6 +33,7 @@ import org.zstack.header.network.service.NetworkServiceType;
 import org.zstack.header.query.AddExpandedQueryExtensionPoint;
 import org.zstack.header.query.ExpandedQueryAliasStruct;
 import org.zstack.header.query.ExpandedQueryStruct;
+import org.zstack.header.quota.QuotaConstant;
 import org.zstack.header.vm.*;
 import org.zstack.identity.AccountManager;
 import org.zstack.identity.QuotaUtil;
@@ -245,7 +246,9 @@ public class PortForwardingManagerImpl extends AbstractService implements PortFo
                     return new ArrayList<>();
                 }
 
-                l3Uuids.stream().filter(l3 -> !privateL3Uuids.contains(l3));
+                l3Uuids = l3Uuids.stream()
+                        .filter(l3 -> privateL3Uuids.contains(l3))
+                        .collect(Collectors.toList());
                 if (l3Uuids.isEmpty()) {
                     return new ArrayList<>();
                 }
@@ -1043,7 +1046,7 @@ public class PortForwardingManagerImpl extends AbstractService implements PortFo
 
         QuotaPair p = new QuotaPair();
         p.setName(PortForwardingConstant.QUOTA_PF_NUM);
-        p.setValue(20);
+        p.setValue(QuotaConstant.QUOTA_PF_NUM);
         quota.addPair(p);
         return list(quota);
     }

@@ -450,6 +450,10 @@ public class NetworkUtils {
         }
     }
 
+    public static boolean isFullCidr(String cidr) {
+        return cidr.equals("0.0.0.0/0");
+    }
+
     public static boolean isCidrOverlap(String cidr1, String cidr2) {
         DebugUtils.Assert(isCidr(cidr1), String.format("%s is not a cidr", cidr1));
         DebugUtils.Assert(isCidr(cidr2), String.format("%s is not a cidr", cidr2));
@@ -503,6 +507,90 @@ public class NetworkUtils {
             }
         }
         return internalIpRanges;
+    }
+
+    public static String fmtCidr(final String origin) {
+        // format "*.*.*.1/24" to "*.*.*.0/24"
+        DebugUtils.Assert(isCidr(origin), String.format("%s is not a cidr", origin));
+        return origin.replaceFirst(".[0-9]{1,3}/", ".0/");
+    }
+
+    public static List<String> getCidrsFromIpRange(String startIp, String endIp) {
+        return getCidrsFromIpRange(startIp, endIp, true);
+    }
+
+    public static List<String> getCidrsFromIpRange(String startIp, String endIp, boolean exact) {
+        if (!isIpv4Address(startIp)) {
+            throw new IllegalArgumentException(String.format("%s is not a valid ipv4 address", startIp));
+        }
+        if (!isIpv4Address(endIp)) {
+            throw new IllegalArgumentException(String.format("%s is not a valid ipv4 address", endIp));
+        }
+
+        long start = exact ? ipToLong(startIp) : ipToLong(startIp, 0L);
+        long end = exact ? ipToLong(endIp) : ipToLong(endIp, 255L);
+
+        ArrayList<String> pairs = new ArrayList<String>();
+        while (end >= start) {
+            byte maxsize = 32;
+            while (maxsize > 0) {
+                long mask = CIDR2MASK[maxsize - 1];
+                long maskedBase = start & mask;
+
+                if (maskedBase != start) {
+                    break;
+                }
+
+                maxsize--;
+            }
+            double x = Math.log(end - start + 1) / Math.log(2);
+            byte maxdiff = (byte) (32 - Math.floor(x));
+            if (maxsize < maxdiff) {
+                maxsize = maxdiff;
+            }
+            String ip = longToIP(start);
+            pairs.add(ip + "/" + maxsize);
+            start += Math.pow(2, (32 - maxsize));
+        }
+        logger.debug(String.format("get Cidrs from startIp:[%s], endId: [%s]", startIp, endIp));
+        logger.debug(String.format("cidrs: %s", pairs.toString()));
+        return pairs;
+    }
+
+    public static final int[] CIDR2MASK = new int[] { 0x00000000, 0x80000000,
+            0xC0000000, 0xE0000000, 0xF0000000, 0xF8000000, 0xFC000000,
+            0xFE000000, 0xFF000000, 0xFF800000, 0xFFC00000, 0xFFE00000,
+            0xFFF00000, 0xFFF80000, 0xFFFC0000, 0xFFFE0000, 0xFFFF0000,
+            0xFFFF8000, 0xFFFFC000, 0xFFFFE000, 0xFFFFF000, 0xFFFFF800,
+            0xFFFFFC00, 0xFFFFFE00, 0xFFFFFF00, 0xFFFFFF80, 0xFFFFFFC0,
+            0xFFFFFFE0, 0xFFFFFFF0, 0xFFFFFFF8, 0xFFFFFFFC, 0xFFFFFFFE,
+            0xFFFFFFFF };
+
+    private static long ipToLong(String strIP) {
+        return ipToLong(strIP, null);
+    }
+
+    private static long ipToLong(String strIP, Long last) {
+        long[] ip = new long[4];
+        String[] ipSec = strIP.split("\\.");
+        for (int k = 0; k < 4; k++) {
+            ip[k] = Long.valueOf(ipSec[k]);
+        }
+
+        return (ip[0] << 24) + (ip[1] << 16) + (ip[2] << 8) + (last == null ? ip[3] : last);
+    }
+
+    private static String longToIP(long longIP) {
+        StringBuffer sb = new StringBuffer("");
+        sb.append(String.valueOf(longIP >>> 24));
+        sb.append(".");
+        sb.append(String.valueOf((longIP & 0x00FFFFFF) >>> 16));
+        sb.append(".");
+        sb.append(String.valueOf((longIP & 0x0000FFFF) >>> 8));
+        sb.append(".");
+        sb.append(String.valueOf(longIP & 0x000000FF));
+
+        return sb.toString();
     }
 }
 

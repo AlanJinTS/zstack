@@ -2039,18 +2039,12 @@ public class VmInstanceBase extends AbstractVmInstance {
     protected void handleApiMessage(APIMessage msg) {
         if (msg instanceof APIStopVmInstanceMsg) {
             handle((APIStopVmInstanceMsg) msg);
-//        } else if (msg instanceof APICreateStopVmInstanceSchedulerJobMsg) {
-//            handle((APICreateStopVmInstanceSchedulerJobMsg) msg);
         } else if (msg instanceof APIRebootVmInstanceMsg) {
             handle((APIRebootVmInstanceMsg) msg);
-//        } else if (msg instanceof APICreateRebootVmInstanceSchedulerJobMsg) {
-//            handle((APICreateRebootVmInstanceSchedulerJobMsg) msg);
         } else if (msg instanceof APIDestroyVmInstanceMsg) {
             handle((APIDestroyVmInstanceMsg) msg);
         } else if (msg instanceof APIStartVmInstanceMsg) {
             handle((APIStartVmInstanceMsg) msg);
-//        } else if (msg instanceof APICreateStartVmInstanceSchedulerJobMsg) {
-//            handle((APICreateStartVmInstanceSchedulerJobMsg) msg);
         } else if (msg instanceof APIMigrateVmMsg) {
             handle((APIMigrateVmMsg) msg);
         } else if (msg instanceof APIAttachL3NetworkToVmMsg) {
@@ -2406,6 +2400,7 @@ public class VmInstanceBase extends AbstractVmInstance {
         evt.setInventory(getSelfInventory());
         bus.publish(evt);
     }
+
 
     private void handle(APISetVmSshKeyMsg msg) {
         APISetVmSshKeyEvent evt = new APISetVmSshKeyEvent(msg.getId());
@@ -3131,6 +3126,8 @@ public class VmInstanceBase extends AbstractVmInstance {
                 changeOffering(msg, new Completion(msg, chain) {
                     @Override
                     public void success() {
+                        self.setInstanceOfferingUuid(msg.getInstanceOfferingUuid());
+                        dbf.updateAndRefresh(self);
                         refreshVO();
                         evt.setInventory(getSelfInventory());
                         bus.publish(evt);
@@ -3874,6 +3871,9 @@ public class VmInstanceBase extends AbstractVmInstance {
             APIStartVmInstanceMsg amsg = (APIStartVmInstanceMsg) msg;
             spec.setRequiredClusterUuid(amsg.getClusterUuid());
             spec.setRequiredHostUuid(amsg.getHostUuid());
+            spec.setUsbRedirect(VmSystemTags.USB_REDIRECT.getTokenByResourceUuid(self.getUuid(), VmSystemTags.USB_REDIRECT_TOKEN));
+            spec.setEnableRDP(VmSystemTags.RDP_ENABLE.getTokenByResourceUuid(self.getUuid(), VmSystemTags.RDP_ENABLE_TOKEN));
+            spec.setVDIMonitorNumber(VmSystemTags.VDI_MONITOR_NUMBER.getTokenByResourceUuid(self.getUuid(), VmSystemTags.VDI_MONITOR_NUMBER_TOKEN));
         }
 
         if (spec.getDestNics().isEmpty()) {

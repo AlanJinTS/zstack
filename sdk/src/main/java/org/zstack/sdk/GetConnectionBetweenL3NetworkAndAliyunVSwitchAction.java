@@ -25,7 +25,7 @@ public class GetConnectionBetweenL3NetworkAndAliyunVSwitchAction extends Abstrac
     @Param(required = true, nonempty = false, nullElements = false, emptyString = true, noTrim = false)
     public java.lang.String uuid;
 
-    @Param(required = true, validValues = {"vswitch","l3network","vroutervm","vbr","vpc"}, nonempty = false, nullElements = false, emptyString = true, noTrim = false)
+    @Param(required = true, validValues = {"l3network","vroutervm","vbr","vpc"}, nonempty = false, nullElements = false, emptyString = true, noTrim = false)
     public java.lang.String resourceType;
 
     @Param(required = false)
@@ -71,11 +71,11 @@ public class GetConnectionBetweenL3NetworkAndAliyunVSwitchAction extends Abstrac
 
     RestInfo getRestInfo() {
         RestInfo info = new RestInfo();
-        info.httpMethod = "GET";
-        info.path = "/hybrid/aliyun/connections";
+        info.httpMethod = "POST";
+        info.path = "/hybrid/aliyun/relationships";
         info.needSession = true;
         info.needPoll = false;
-        info.parameterName = "";
+        info.parameterName = "params";
         return info;
     }
 

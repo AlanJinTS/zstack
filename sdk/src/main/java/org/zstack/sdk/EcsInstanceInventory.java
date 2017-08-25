@@ -42,19 +42,19 @@ public class EcsInstanceInventory  {
         return this.ecsStatus;
     }
 
-    public long cpuCores;
-    public void setCpuCores(long cpuCores) {
+    public java.lang.Long cpuCores;
+    public void setCpuCores(java.lang.Long cpuCores) {
         this.cpuCores = cpuCores;
     }
-    public long getCpuCores() {
+    public java.lang.Long getCpuCores() {
         return this.cpuCores;
     }
 
-    public long memorySize;
-    public void setMemorySize(long memorySize) {
+    public java.lang.Long memorySize;
+    public void setMemorySize(java.lang.Long memorySize) {
         this.memorySize = memorySize;
     }
-    public long getMemorySize() {
+    public java.lang.Long getMemorySize() {
         return this.memorySize;
     }
 
@@ -66,11 +66,11 @@ public class EcsInstanceInventory  {
         return this.ecsInstanceType;
     }
 
-    public long ecsBandWidth;
-    public void setEcsBandWidth(long ecsBandWidth) {
+    public java.lang.Long ecsBandWidth;
+    public void setEcsBandWidth(java.lang.Long ecsBandWidth) {
         this.ecsBandWidth = ecsBandWidth;
     }
-    public long getEcsBandWidth() {
+    public java.lang.Long getEcsBandWidth() {
         return this.ecsBandWidth;
     }
 
@@ -90,11 +90,11 @@ public class EcsInstanceInventory  {
         return this.ecsRootVolumeCategory;
     }
 
-    public long ecsRootVolumeSize;
-    public void setEcsRootVolumeSize(long ecsRootVolumeSize) {
+    public java.lang.Long ecsRootVolumeSize;
+    public void setEcsRootVolumeSize(java.lang.Long ecsRootVolumeSize) {
         this.ecsRootVolumeSize = ecsRootVolumeSize;
     }
-    public long getEcsRootVolumeSize() {
+    public java.lang.Long getEcsRootVolumeSize() {
         return this.ecsRootVolumeSize;
     }
 
@@ -104,14 +104,6 @@ public class EcsInstanceInventory  {
     }
     public java.lang.String getPrivateIpAddress() {
         return this.privateIpAddress;
-    }
-
-    public java.lang.String ecsEipUuid;
-    public void setEcsEipUuid(java.lang.String ecsEipUuid) {
-        this.ecsEipUuid = ecsEipUuid;
-    }
-    public java.lang.String getEcsEipUuid() {
-        return this.ecsEipUuid;
     }
 
     public java.lang.String ecsVSwitchUuid;
@@ -144,6 +136,22 @@ public class EcsInstanceInventory  {
     }
     public java.lang.String getIdentityZoneUuid() {
         return this.identityZoneUuid;
+    }
+
+    public java.lang.String chargeType;
+    public void setChargeType(java.lang.String chargeType) {
+        this.chargeType = chargeType;
+    }
+    public java.lang.String getChargeType() {
+        return this.chargeType;
+    }
+
+    public java.sql.Timestamp expireDate;
+    public void setExpireDate(java.sql.Timestamp expireDate) {
+        this.expireDate = expireDate;
+    }
+    public java.sql.Timestamp getExpireDate() {
+        return this.expireDate;
     }
 
     public java.sql.Timestamp createDate;

@@ -11,6 +11,7 @@ import org.zstack.header.rest.RestRequest;
 @RestRequest(
         path = "/web-hooks",
         method = HttpMethod.POST,
+        parameterName = "params",
         responseClass = APICreateWebhookEvent.class
 )
 public class APICreateWebhookMsg extends APICreateMessage {
@@ -62,5 +63,13 @@ public class APICreateWebhookMsg extends APICreateMessage {
 
     public void setOpaque(String opaque) {
         this.opaque = opaque;
+    }
+
+    public static APICreateWebhookMsg __example__() {
+        APICreateWebhookMsg msg = new APICreateWebhookMsg();
+        msg.setName("test");
+        msg.setUrl("http://localhost/web-hooks");
+        msg.setType("CanonicalEvent");
+        return msg;
     }
 }

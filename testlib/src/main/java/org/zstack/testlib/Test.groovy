@@ -14,11 +14,12 @@ import org.zstack.header.message.Event
 import org.zstack.header.message.Message
 import org.zstack.sdk.SessionInventory
 import org.zstack.sdk.ZSClient
+import org.zstack.testlib.collectstrategy.SubCaseCollectionStrategyFactory
+import org.zstack.testlib.collectstrategy.SubCaseCollectionStrategy
 import org.zstack.utils.ShellUtils
 import org.zstack.utils.Utils
 import org.zstack.utils.gson.JSONObjectUtil
 import org.zstack.utils.logging.CLogger
-
 import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
 import java.util.concurrent.ConcurrentHashMap
@@ -35,7 +36,23 @@ abstract class Test implements ApiHelper {
     static Object deployer
     static Map<String, String> apiPaths = new ConcurrentHashMap<>()
 
-    private final long DEFAULT_MESSAGE_TIMEOUT = TimeUnit.SECONDS.toMillis(25)
+    private final static long DEFAULT_MESSAGE_TIMEOUT_SECS = TimeUnit.SECONDS.toMillis(25)
+
+    static long getMessageTimeoutMillsConfig(){
+        String msgTimeoutStr = System.getProperty("msgTimeoutMins")
+
+        if(System.getProperty("maven.surefire.debug") != null && msgTimeoutStr == null){
+            return TimeUnit.MINUTES.toMillis(30)
+        }
+
+        if(msgTimeoutStr == null || msgTimeoutStr.isEmpty()){
+            return DEFAULT_MESSAGE_TIMEOUT_SECS
+        }
+
+        long msgTimeout = Long.parseLong(msgTimeoutStr)
+        return TimeUnit.MINUTES.toMillis(msgTimeout)
+    }
+
     private final int PHASE_NONE = 0
     private final int PHASE_SETUP = 1
     private final int PHASE_ENV = 2
@@ -48,8 +65,6 @@ abstract class Test implements ApiHelper {
     private int phase = PHASE_NONE
     protected BeanConstructor beanConstructor
     protected SpringSpec _springSpec
-
-
 
     Test() {
         _springSpec = new SpringSpec()
@@ -144,7 +159,8 @@ abstract class Test implements ApiHelper {
     private void hijackService() {
         CloudBus bus = bean(CloudBus.class)
         if(bus instanceof CloudBusImpl2){
-            ((CloudBusImpl2)bus).setDEFAULT_MESSAGE_TIMEOUT(DEFAULT_MESSAGE_TIMEOUT)
+            logger.info(String.format("CloudBus message timeout: %s mills", getMessageTimeoutMillsConfig()))
+            ((CloudBusImpl2)bus).setDEFAULT_MESSAGE_TIMEOUT(getMessageTimeoutMillsConfig())
         }
 
         def serviceId = "test.hijack.service"
@@ -159,10 +175,23 @@ abstract class Test implements ApiHelper {
                     def all = currentEnvSpec.messageHandlers.findAll { k, _ -> k.isAssignableFrom(msg.getClass()) }
 
                     boolean handled = false
+                    boolean conded = false
                     all.values().each { tuples ->
+                        // if there is a closure with condition satisfied, skip the mock without conditions
+                        tuples.each {
+                            Closure cond = it[0]
+                            if (cond != null && cond(msg)) {
+                                conded = true
+                            }
+                        }
                         tuples.each {
                             Closure cond = it[0]
                             Closure handler = it[1]
+
+                            if (cond == null && conded) {
+                                // skip (cond == null)
+                                return
+                            }
 
                             if (cond != null && !cond(msg)) {
                                 return
@@ -346,15 +375,23 @@ abstract class Test implements ApiHelper {
         return resultDir
     }
 
+    private SubCaseCollectionStrategy getSubCaseCollectionStrategy(){
+        String strategyName = System.getProperty("subCaseCollectionStrategy")
+        SubCaseCollectionStrategy strategy = SubCaseCollectionStrategyFactory.getSubCaseCollectionStrategy(strategyName)
+
+        assert null != strategy : "can not find SubCaseCollectionStrategy"
+        logger.info("input subCaseCollectionStrategy = ${strategyName}, subCaseCollectionStrategy is ${strategy.strategyName}")
+        return strategy
+    }
+
     protected void runSubCases() {
         def resultDir = [getResultDirBase(), this.class.name.replace(".", "_")].join("/")
         def dir = new File(resultDir)
         dir.deleteDir()
         dir.mkdirs()
 
-        def caseTypes = Platform.reflections.getSubTypesOf(Case.class)
-        caseTypes = caseTypes.findAll { it.package.name == this.class.package.name || it.package.name.startsWith("${this.class.package.name}.") }
-        caseTypes = caseTypes.sort()
+        SubCaseCollectionStrategy strategy = getSubCaseCollectionStrategy()
+        def caseTypes = strategy.collectSubCases(this)
 
         def cases = new File([dir.absolutePath, "cases"].join("/"))
         cases.write(caseTypes.collect {it.name}.join("\n"))
@@ -539,7 +576,7 @@ mysqldump -u root zstack > ${failureLogDir.absolutePath}/dbdump.sql
                 return ret
             }
             TimeUnit.SECONDS.sleep(interval)
-            count += interval
+            count ++
         }
 
         return false

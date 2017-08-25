@@ -16,6 +16,7 @@ import org.zstack.header.core.NoErrorCompletion
 import org.zstack.header.core.progress.TaskProgressVO
 import org.zstack.header.core.workflow.WhileCompletion
 import org.zstack.header.identity.AccountConstant
+import org.zstack.header.identity.SessionVO
 import org.zstack.header.image.ImageDeletionPolicyManager
 import org.zstack.header.message.Message
 import org.zstack.header.rest.RESTConstant
@@ -435,6 +436,7 @@ class EnvSpec implements Node {
             sim.registerSimulators(this)
         }
 
+
         deploy()
 
         defaultHttpHandlers = [:]
@@ -585,6 +587,7 @@ class EnvSpec implements Node {
 
             SQL.New(NotificationVO.class).hardDelete()
             SQL.New(TaskProgressVO.class).hardDelete()
+            SQL.New(SessionVO.class).hardDelete()
 
             if (GLOBAL_DELETE_HOOK != null) {
                 GLOBAL_DELETE_HOOK()
@@ -703,6 +706,12 @@ class EnvSpec implements Node {
         if (lst == null) {
             lst = []
             messageHandlers[(msgClz)] = lst
+        } else {
+            // deduplication
+            def ele = lst.find { it -> it.get(0) == condition }
+            if (ele != null) {
+                lst.remove(ele)
+            }
         }
 
         lst.add(new Tuple(condition, handler))

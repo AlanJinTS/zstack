@@ -1,6 +1,5 @@
 package org.zstack.storage.primary.nfs;
 
-import org.apache.commons.lang.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.zstack.core.asyncbatch.AsyncBatchRunner;
@@ -9,12 +8,10 @@ import org.zstack.core.cloudbus.AutoOffEventCallback;
 import org.zstack.core.cloudbus.CloudBusCallBack;
 import org.zstack.core.cloudbus.EventFacade;
 import org.zstack.core.db.Q;
-import org.zstack.core.db.SQLBatch;
 import org.zstack.core.db.SimpleQuery;
 import org.zstack.core.db.SimpleQuery.Op;
 import org.zstack.core.errorcode.ErrorFacade;
 import org.zstack.core.notification.N;
-import org.zstack.core.thread.SyncTask;
 import org.zstack.core.workflow.FlowChainBuilder;
 import org.zstack.core.workflow.ShareFlow;
 import org.zstack.header.cluster.ClusterVO;
@@ -23,7 +20,6 @@ import org.zstack.header.core.*;
 import org.zstack.header.core.workflow.*;
 import org.zstack.header.errorcode.ErrorCode;
 import org.zstack.header.errorcode.OperationFailureException;
-import org.zstack.header.exception.CloudRuntimeException;
 import org.zstack.header.host.*;
 import org.zstack.header.host.HostCanonicalEvents.HostStatusChangedData;
 import org.zstack.header.image.ImageConstant.ImageMediaType;
@@ -57,8 +53,10 @@ import org.zstack.utils.function.Function;
 import org.zstack.utils.logging.CLogger;
 import org.zstack.utils.path.PathUtil;
 
-import static org.zstack.core.Platform.err;
 import static org.zstack.core.Platform.operr;
+import static org.zstack.core.progress.ProgressReportService.reportProgress;
+import static org.zstack.header.storage.backup.BackupStorageConstant.*;
+import static org.zstack.utils.ProgressUtils.getEndFromStage;
 
 import javax.persistence.Tuple;
 import javax.persistence.TypedQuery;
@@ -467,27 +465,30 @@ public class NfsPrimaryStorage extends PrimaryStorageBase {
         String volumeUuid = msg.getStruct().getCurrent().getVolumeUuid();
         VolumeVO vol = dbf.findByUuid(volumeUuid, VolumeVO.class);
 
-        String huuid = null;
-        if (vol.getVmInstanceUuid() != null) {
-            SimpleQuery<VmInstanceVO> q = dbf.createQuery(VmInstanceVO.class);
-            q.select(VmInstanceVO_.state, VmInstanceVO_.hostUuid, VmInstanceVO_.lastHostUuid);
-            q.add(VmInstanceVO_.uuid, Op.EQ, vol.getVmInstanceUuid());
-            Tuple t = q.findTuple();
-            VmInstanceState vmState = t.get(0, VmInstanceState.class);
-            String hostUuid = t.get(1, String.class);
-            String lastHostUuid = t.get(2, String.class);
-            if (vmState != VmInstanceState.Running && vmState != VmInstanceState.Stopped) {
-                ErrorCode err = operr("vm[uuid:%s] is not Running or Stopped, current state is %s",
-                        vol.getVmInstanceUuid(), vmState);
-                reply.setError(err);
+        String huuid;
+        String connectedHostUuid = factory.getConnectedHostForOperation(getSelfInventory()).get(0).getUuid();
+        if (vol.getVmInstanceUuid() != null){
+            Tuple t = Q.New(VmInstanceVO.class)
+                    .select(VmInstanceVO_.state, VmInstanceVO_.hostUuid)
+                    .eq(VmInstanceVO_.uuid, vol.getVmInstanceUuid())
+                    .findTuple();
+            VmInstanceState state = t.get(0, VmInstanceState.class);
+            String vmHostUuid = t.get(1, String.class);
+
+            if (state == VmInstanceState.Running || state == VmInstanceState.Paused){
+                DebugUtils.Assert(vmHostUuid != null,
+                        String.format("vm[uuid:%s] is Running or Paused, but has no hostUuid", vol.getVmInstanceUuid()));
+                huuid = vmHostUuid;
+            } else if (state == VmInstanceState.Stopped){
+                huuid = connectedHostUuid;
+            } else {
+                reply.setError(operr("vm[uuid:%s] is not Running, Paused or Stopped, current state is %s",
+                        vol.getVmInstanceUuid(), state));
                 bus.reply(msg, reply);
                 return;
             }
-
-            huuid = VmInstanceState.Running == vmState ? hostUuid : lastHostUuid;
         } else {
-            HostInventory host = factory.getConnectedHostForOperation(getSelfInventory()).get(0);
-            huuid = host.getUuid();
+            huuid = connectedHostUuid;
         }
 
         VolumeInventory volInv = VolumeInventory.valueOf(vol);
@@ -798,6 +799,7 @@ public class NfsPrimaryStorage extends PrimaryStorageBase {
                             @Override
                             public void success(String returnValue) {
                                 templatePrimaryStorageInstallPath = returnValue;
+                                reportProgress(getEndFromStage(CREATE_ROOT_VOLUME_TEMPLATE_CREATE_TEMPORARY_TEMPLATE_STAGE));
                                 trigger.next();
                             }
 
@@ -832,6 +834,7 @@ public class NfsPrimaryStorage extends PrimaryStorageBase {
                         mediator.uploadBits(msg.getImageInventory().getUuid(), pinv, bsinv, templateBackupStorageInstallPath, templatePrimaryStorageInstallPath, new ReturnValueCompletion<String>(trigger) {
                             @Override
                             public void success(String installPath) {
+                                reportProgress(getEndFromStage(CREATE_ROOT_VOLUME_TEMPLATE_UPLOAD_STAGE));
                                 templateBackupStorageInstallPath = installPath;
                                 trigger.next();
                             }

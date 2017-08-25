@@ -79,7 +79,7 @@ public class InstanceOfferingBase implements InstanceOffering {
     private void handle(InstanceOfferingDeletionMsg msg) {
         deleteHook();
         InstanceOfferingDeletionReply reply = new InstanceOfferingDeletionReply();
-        dbf.remove(self);
+        dbf.removeByPrimaryKey(msg.getInstanceOfferingUuid(), InstanceOfferingVO.class);
         bus.reply(msg, reply);
     }
 
